@@ -175,11 +175,26 @@ if st.session_state.logged_in and st.session_state.role == "user":
     employee_id = st.session_state.user_id
 
     existing = c.execute(
-        "SELECT 1 FROM submissions WHERE employee_id = ?", (employee_id,)
+        "SELECT * FROM submissions WHERE employee_id = ?", (employee_id,)
     ).fetchone()
 
     if existing:
-        st.warning("Already submitted")
+        st.success("Submission received")
+
+        choices = [existing[f"choice{i}"] for i in range(1, 11) if existing[f"choice{i}"]]
+
+        st.subheader("Your Selections")
+        for i, choice in enumerate(choices, start=1):
+            st.write(f"{i}. {choice}")
+
+        txt = "\n".join([f"{i}. {c}" for i, c in enumerate(choices, 1)])
+
+        st.download_button(
+            "Download Your Selections",
+            txt,
+            "my_vacation_choices.txt"
+        )
+
     else:
         choices = [st.selectbox(f"Choice {i}", [""] + active_weeks, key=f"c{i}") for i in range(1, 11)]
 
@@ -193,6 +208,7 @@ if st.session_state.logged_in and st.session_state.role == "user":
                 )
                 conn.commit()
                 st.success("Submitted")
+                st.rerun()
 
 # ADMIN VIEW
 if st.session_state.logged_in and st.session_state.role == "admin":
@@ -207,7 +223,6 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         c.execute("DELETE FROM results")
         conn.commit()
 
-    # WHO HAS SUBMITTED
     st.subheader("Who Has Submitted")
 
     subs = pd.read_sql_query("SELECT employee_id FROM submissions", conn)
@@ -221,7 +236,6 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.write(view[["first_name", "last_name"]].sort_values(by="last_name"))
 
-    # TEST DATA
     if st.button("Generate Test Submissions"):
         c.execute("DELETE FROM submissions")
         employees = get_employees()
@@ -240,7 +254,6 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.success("Test submissions generated")
 
-    # RESET PASSWORD
     st.subheader("Reset Individual Password")
 
     emp_list = get_employees()
@@ -254,7 +267,6 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.success("Password reset")
 
-    # ADD EMPLOYEE
     st.subheader("Add Employee")
 
     with st.form("add_employee_form"):
@@ -279,7 +291,6 @@ if st.session_state.logged_in and st.session_state.role == "admin":
                 except:
                     st.error("Employee ID exists")
 
-    # EDIT EMPLOYEES
     st.subheader("Edit Employees")
     edit_df = st.data_editor(get_employees())
 
@@ -305,7 +316,6 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.success("Employees updated")
 
-    # LOTTERY
     st.subheader("Run Lottery")
 
     if st.button("Run Lottery"):
@@ -341,7 +351,6 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.success("Lottery Complete")
 
-    # RESULTS + DOWNLOAD
     results_df = pd.read_sql_query("SELECT * FROM results", conn)
     fresh = get_employees()
 
