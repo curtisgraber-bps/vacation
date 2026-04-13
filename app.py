@@ -137,7 +137,6 @@ if not st.session_state.logged_in:
                     else:
                         st.error("Invalid password")
 
-    # spacing before admin
     st.markdown("---")
     st.markdown(" ")
 
@@ -205,6 +204,39 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.success("Passwords cleared")
 
+    # ADD EMPLOYEE FORM
+    st.subheader("Add Employee")
+
+    with st.form("add_employee_form"):
+        new_id = st.text_input("Employee ID")
+        new_first = st.text_input("First Name")
+        new_last = st.text_input("Last Name")
+        new_hire = st.date_input("Hire Date")
+
+        submitted = st.form_submit_button("Add Employee")
+
+        if submitted:
+            if not new_id or not new_first or not new_last:
+                st.error("All fields required")
+            else:
+                try:
+                    c.execute(
+                        "INSERT INTO employees (employee_id, first_name, last_name, hire_date, win_count, password_hash) VALUES (?, ?, ?, ?, ?, ?)",
+                        (
+                            str(new_id).strip(),
+                            new_first,
+                            new_last,
+                            str(new_hire),
+                            0,
+                            None
+                        )
+                    )
+                    conn.commit()
+                    st.success("Employee added")
+                except:
+                    st.error("Employee ID already exists")
+
+    # EDIT EMPLOYEES
     st.subheader("Edit Employees")
     edit_df = st.data_editor(get_employees())
 
