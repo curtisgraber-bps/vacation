@@ -210,15 +210,13 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         c.execute("DELETE FROM results")
         conn.commit()
 
-    # TEST DATA GENERATOR
+    # TEST DATA
     if st.button("Generate Test Submissions"):
         c.execute("DELETE FROM submissions")
-
         employees = get_employees()
 
         for _, emp in employees.iterrows():
             emp_id = emp["employee_id"]
-
             num_choices = random.randint(1, 10)
             choices = random.sample(active_weeks, num_choices)
             choices += [""] * (10 - len(choices))
@@ -241,11 +239,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     if st.button("Reset Password"):
         emp_id = selected.split(" - ")[0]
-
-        c.execute(
-            "UPDATE employees SET password_hash=NULL WHERE employee_id=?",
-            (emp_id,)
-        )
+        c.execute("UPDATE employees SET password_hash=NULL WHERE employee_id=?", (emp_id,))
         conn.commit()
         st.success("Password reset")
 
@@ -267,14 +261,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
                 try:
                     c.execute(
                         "INSERT INTO employees (employee_id, first_name, last_name, hire_date, win_count, password_hash) VALUES (?, ?, ?, ?, ?, ?)",
-                        (
-                            str(new_id).strip(),
-                            new_first,
-                            new_last,
-                            str(new_hire),
-                            0,
-                            None
-                        )
+                        (str(new_id).strip(), new_first, new_last, str(new_hire), 0, None)
                     )
                     conn.commit()
                     st.success("Employee added")
@@ -307,6 +294,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.success("Employees updated")
 
+    # LOTTERY
     st.subheader("Run Lottery")
 
     if st.button("Run Lottery"):
@@ -342,6 +330,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.success("Lottery Complete")
 
+    # RESULTS + DOWNLOAD
     results_df = pd.read_sql_query("SELECT * FROM results", conn)
     fresh = get_employees()
 
@@ -352,3 +341,12 @@ if st.session_state.logged_in and st.session_state.role == "admin":
     )
 
     st.write(results_df)
+
+    csv = results_df.to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+        "Download Results",
+        csv,
+        "results.csv",
+        "text/csv"
+    )
