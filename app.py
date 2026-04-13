@@ -112,20 +112,28 @@ if not st.session_state.logged_in:
         employees_df = get_employees()
         emp = employees_df[employees_df["employee_id"] == str(login_id).strip()]
 
-        if not emp.empty:
+        if emp.empty:
+            st.error("Employee not found")
+
+        else:
             emp = emp.iloc[0]
 
             if not emp["password_hash"] or pd.isna(emp["password_hash"]):
+                st.info("First time login – create your password")
+
                 new_pw = st.text_input("Create Password", type="password")
 
                 if st.button("Set Password"):
-                    h = hash_pw(new_pw)
-                    c.execute(
-                        "UPDATE employees SET password_hash=? WHERE employee_id=?",
-                        (h, str(login_id).strip())
-                    )
-                    conn.commit()
-                    st.success("Password set. Refresh and log in.")
+                    if not new_pw:
+                        st.error("Enter a password")
+                    else:
+                        h = hash_pw(new_pw)
+                        c.execute(
+                            "UPDATE employees SET password_hash=? WHERE employee_id=?",
+                            (h, str(login_id).strip())
+                        )
+                        conn.commit()
+                        st.success("Password set. Log in now.")
 
             else:
                 pw = st.text_input("Password", type="password")
