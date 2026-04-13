@@ -5,12 +5,6 @@ import datetime
 import os
 
 # -----------------------
-# RESET DATABASE (RUN ONCE)
-# -----------------------
-if os.path.exists("data.db"):
-    os.remove("data.db")
-
-# -----------------------
 # DATABASE SETUP
 # -----------------------
 conn = sqlite3.connect("data.db", check_same_thread=False)
