@@ -70,7 +70,7 @@ def generate_weeks(year=2027):
 all_weeks = generate_weeks()
 
 # -----------------------
-# INIT WEEKS TABLE
+# INIT WEEKS
 # -----------------------
 existing_weeks = c.execute("SELECT week FROM weeks").fetchall()
 if not existing_weeks:
@@ -155,6 +155,21 @@ if is_admin:
     st.success("Admin Access Granted")
 
     # -----------------------
+    # RESET CONTROLS
+    # -----------------------
+    st.subheader("Reset Data (Testing Only)")
+
+    if st.button("Clear All Submissions"):
+        c.execute("DELETE FROM submissions")
+        conn.commit()
+        st.success("All submissions cleared")
+
+    if st.button("Clear Results"):
+        c.execute("DELETE FROM results")
+        conn.commit()
+        st.success("Results cleared")
+
+    # -----------------------
     # MANAGE WEEKS
     # -----------------------
     st.subheader("Manage Weeks")
@@ -223,21 +238,18 @@ if is_admin:
 
     results_df = pd.read_sql_query("SELECT * FROM results", conn)
 
-    # JOIN NAMES
     results_df = results_df.merge(
         df[["employee_id", "first_name", "last_name"]],
         on="employee_id",
         how="left"
     )
 
-    # REORDER COLUMNS
     results_df = results_df[
         ["employee_id", "first_name", "last_name", "assigned_week"]
     ]
 
     st.write(results_df)
 
-    # DOWNLOAD
     csv = results_df.to_csv(index=False).encode("utf-8")
 
     st.download_button(
