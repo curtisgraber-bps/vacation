@@ -91,57 +91,92 @@ if c.execute("SELECT COUNT(*) FROM weeks").fetchone()[0] == 0:
 active_weeks = pd.read_sql_query("SELECT week FROM weeks WHERE enabled = 1", conn)["week"].tolist()
 
 # -----------------------
-# LOGIN
+# SESSION INIT
 # -----------------------
-st.title("Vacation Scheduler")
-
-login_id = st.text_input("Employee ID")
-login_last = st.text_input("Last Name")
-
-employees_df = get_employees()
-employee = None
-
-if login_id and login_last:
-    match = employees_df[
-        (employees_df["employee_id"] == str(login_id).strip()) &
-        (employees_df["last_name"].str.lower() == login_last.lower())
-    ]
-    if not match.empty:
-        employee = match.iloc[0]
-        st.success(f"Welcome {employee['first_name']}")
-    else:
-        st.error("Invalid login")
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.role = None
+    st.session_state.user_id = None
 
 # -----------------------
-# SUBMISSION
+# LOGIN SCREEN
 # -----------------------
-if employee is not None:
-    emp_id = str(employee["employee_id"]).strip()
+if not st.session_state.logged_in:
 
-    existing = c.execute("SELECT 1 FROM submissions WHERE employee_id = ?", (emp_id,)).fetchone()
+    st.title("Login")
+
+    login_id = st.text_input("Employee ID")
+    login_last = st.text_input("Last Name")
+    admin_pass = st.text_input("Admin Password (optional)", type="password")
+
+    if st.button("Login"):
+
+        # ADMIN LOGIN
+        if admin_pass == ADMIN_PASSWORD:
+            st.session_state.logged_in = True
+            st.session_state.role = "admin"
+            st.rerun()
+
+        # USER LOGIN
+        employees_df = get_employees()
+
+        match = employees_df[
+            (employees_df["employee_id"] == str(login_id).strip()) &
+            (employees_df["last_name"].str.lower() == login_last.lower())
+        ]
+
+        if not match.empty:
+            st.session_state.logged_in = True
+            st.session_state.role = "user"
+            st.session_state.user_id = str(login_id).strip()
+            st.rerun()
+        else:
+            st.error("Invalid login")
+
+# -----------------------
+# LOGOUT
+# -----------------------
+if st.session_state.logged_in:
+    if st.button("Logout"):
+        st.session_state.clear()
+        st.rerun()
+
+# -----------------------
+# EMPLOYEE VIEW
+# -----------------------
+if st.session_state.logged_in and st.session_state.role == "user":
+
+    st.title("Vacation Scheduler")
+
+    employee_id = st.session_state.user_id
+
+    existing = c.execute(
+        "SELECT 1 FROM submissions WHERE employee_id = ?", (employee_id,)
+    ).fetchone()
 
     if existing:
-        st.warning("Already submitted")
+        st.warning("You have already submitted your choices.")
     else:
-        choices = [st.selectbox(f"Choice {i}", [""] + active_weeks, key=f"c{i}") for i in range(1,11)]
+        choices = [st.selectbox(f"Choice {i}", [""] + active_weeks, key=f"c{i}") for i in range(1, 11)]
 
-        if st.button("Submit"):
+        if st.button("Submit Choices"):
             if all(not c for c in choices):
                 st.error("Select at least one week")
             else:
-                c.execute("INSERT INTO submissions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (emp_id, *choices))
+                c.execute(
+                    "INSERT INTO submissions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (employee_id, *choices)
+                )
                 conn.commit()
                 st.success("Submitted")
 
 # -----------------------
-# ADMIN
+# ADMIN VIEW
 # -----------------------
-admin = st.text_input("Admin Password", type="password") == ADMIN_PASSWORD
+if st.session_state.logged_in and st.session_state.role == "admin":
 
-if admin:
-    st.success("Admin Access")
+    st.title("Admin Panel")
 
-    # RESET
     if st.button("Clear Submissions"):
         c.execute("DELETE FROM submissions")
         conn.commit()
@@ -152,7 +187,6 @@ if admin:
         conn.commit()
         st.success("Results cleared")
 
-    # EDIT EMPLOYEES
     st.subheader("Edit Employees")
     edit_df = st.data_editor(get_employees())
 
@@ -174,7 +208,6 @@ if admin:
         conn.commit()
         st.success("Employees updated")
 
-    # MANAGE WEEKS
     st.subheader("Manage Weeks")
     weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
     edited_weeks = st.data_editor(weeks_df)
@@ -186,7 +219,6 @@ if admin:
         conn.commit()
         st.success("Weeks updated")
 
-    # RUN LOTTERY
     st.subheader("Run Lottery")
 
     if st.button("Run Lottery"):
@@ -205,7 +237,7 @@ if admin:
             emp_id = emp["employee_id"]
             sub = subs[emp_id]
 
-            for i in range(1,11):
+            for i in range(1, 11):
                 choice = sub[f"choice{i}"]
                 if choice and choice not in taken:
                     taken.add(choice)
@@ -213,7 +245,6 @@ if admin:
                     c.execute("INSERT INTO results VALUES (?, ?)", (emp_id, choice))
                     break
 
-        # SAFE INCREMENT (once per run)
         for emp_id in winners:
             c.execute(
                 "UPDATE employees SET win_count = CAST(win_count AS INTEGER) + 1 WHERE employee_id = ?",
@@ -223,7 +254,6 @@ if admin:
         conn.commit()
         st.success("Lottery Complete")
 
-    # RESULTS
     results_df = pd.read_sql_query("SELECT * FROM results", conn)
     fresh = get_employees()
 
@@ -233,13 +263,5 @@ if admin:
         how="left"
     )
 
+    st.subheader("Results")
     st.write(results_df)
-
-    csv = results_df.to_csv(index=False).encode("utf-8")
-
-    st.download_button(
-        "Download Results",
-        csv,
-        "results.csv",
-        "text/csv"
-    )
