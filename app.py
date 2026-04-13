@@ -25,6 +25,13 @@ CREATE TABLE IF NOT EXISTS submissions (
 )
 """)
 
+c.execute("""
+CREATE TABLE IF NOT EXISTS results (
+    employee_id TEXT,
+    assigned_week TEXT
+)
+""")
+
 # -----------------------
 # LOAD EMPLOYEES
 # -----------------------
@@ -32,11 +39,10 @@ df = pd.read_csv("employees.csv")
 df["full_name"] = df["first_name"] + " " + df["last_name"]
 
 # -----------------------
-# GENERATE SATURDAY WEEKS (2027)
+# GENERATE WEEKS
 # -----------------------
 def generate_weeks(year=2027):
     start = datetime.date(year, 1, 1)
-
     while start.weekday() != 5:
         start += datetime.timedelta(days=1)
 
@@ -55,22 +61,20 @@ weeks = generate_weeks()
 # -----------------------
 st.title("Vacation Scheduler")
 
-st.header("Select Your Vacation Weeks (Up to 10 Choices)")
+st.header("Submit Your Choices")
 
 selected = st.selectbox("Select Your Name", df["full_name"])
 employee_id = df[df["full_name"] == selected]["employee_id"].values[0]
 
-# Check if already submitted
 existing = c.execute(
     "SELECT 1 FROM submissions WHERE employee_id = ?",
     (employee_id,)
 ).fetchone()
 
 if existing:
-    st.warning("You have already submitted your selections.")
+    st.warning("Already submitted")
 else:
     choices = []
-
     for i in range(1, 11):
         choice = st.selectbox(f"Choice {i}", [""] + weeks, key=f"choice_{i}")
         choices.append(choice)
@@ -80,18 +84,51 @@ else:
             st.error("Select at least one week")
         else:
             c.execute("""
-                INSERT INTO submissions (
-                    employee_id, choice1, choice2, choice3, choice4,
-                    choice5, choice6, choice7, choice8, choice9, choice10
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO submissions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (employee_id, *choices))
-
             conn.commit()
             st.success("Submitted")
 
 # -----------------------
-# ADMIN VIEW
+# RUN ALLOCATION
 # -----------------------
-st.header("Admin View")
-rows = c.execute("SELECT * FROM submissions").fetchall()
-st.write(rows)
+st.header("Admin: Run Allocation")
+
+if st.button("Run Lottery"):
+    c.execute("DELETE FROM results")
+
+    employees = pd.read_csv("employees.csv")
+    subs = pd.read_sql_query("SELECT * FROM submissions", conn)
+
+    merged = pd.merge(employees, subs, on="employee_id")
+
+    # Sort: lowest wins first, then oldest hire date
+    merged = merged.sort_values(by=["win_count", "hire_date"])
+
+    taken_weeks = set()
+
+    for _, row in merged.iterrows():
+        assigned = None
+
+        for i in range(1, 11):
+            choice = row[f"choice{i}"]
+            if choice and choice not in taken_weeks:
+                assigned = choice
+                taken_weeks.add(choice)
+                break
+
+        if assigned:
+            c.execute(
+                "INSERT INTO results (employee_id, assigned_week) VALUES (?, ?)",
+                (row["employee_id"], assigned)
+            )
+
+    conn.commit()
+    st.success("Lottery Complete")
+
+# -----------------------
+# VIEW RESULTS
+# -----------------------
+st.header("Results")
+results = c.execute("SELECT * FROM results").fetchall()
+st.write(results)
