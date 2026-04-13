@@ -175,6 +175,14 @@ if st.session_state.logged_in and st.session_state.role == "user":
 # -----------------------
 if st.session_state.logged_in and st.session_state.role == "admin":
 
+    if st.button("Add password column"):
+        try:
+            c.execute("ALTER TABLE employees ADD COLUMN password_hash TEXT")
+            conn.commit()
+            st.success("Column added")
+        except:
+            st.warning("Column already exists")
+
     st.title("Admin Panel")
 
     if st.button("Clear Submissions"):
