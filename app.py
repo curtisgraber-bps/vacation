@@ -7,7 +7,7 @@ import datetime
 # DATABASE SETUP
 # -----------------------
 conn = sqlite3.connect("data.db", check_same_thread=False)
-conn.row_factory = sqlite3.Row  # safer reads
+conn.row_factory = sqlite3.Row
 c = conn.cursor()
 
 c.execute("""
@@ -92,7 +92,7 @@ else:
             st.success("Submitted")
 
 # -----------------------
-# RUN ALLOCATION (NO PANDAS MERGE)
+# RUN ALLOCATION + UPDATE WINS
 # -----------------------
 st.header("Admin: Run Allocation")
 
@@ -102,19 +102,14 @@ if st.button("Run Lottery"):
     employees = pd.read_csv("employees.csv")
     employees["employee_id"] = employees["employee_id"].astype(str)
 
-    # Pull submissions manually (no pandas conversion issues)
     subs_rows = c.execute("SELECT * FROM submissions").fetchall()
-
-    # Convert to dict keyed by employee_id
     subs_dict = {row["employee_id"]: row for row in subs_rows}
 
-    # Filter only employees who submitted
     employees = employees[employees["employee_id"].isin(subs_dict.keys())]
-
-    # Sort properly
     employees = employees.sort_values(by=["win_count", "hire_date"])
 
     taken_weeks = set()
+    winners = []
 
     for _, emp in employees.iterrows():
         emp_id = emp["employee_id"]
@@ -130,13 +125,24 @@ if st.button("Run Lottery"):
                 break
 
         if assigned:
+            winners.append(emp_id)
             c.execute(
                 "INSERT INTO results (employee_id, assigned_week) VALUES (?, ?)",
                 (emp_id, assigned)
             )
 
     conn.commit()
-    st.success("Lottery Complete")
+
+    # -----------------------
+    # UPDATE WIN COUNTS
+    # -----------------------
+    for emp_id in winners:
+        df.loc[df["employee_id"] == emp_id, "win_count"] += 1
+
+    # Save updated employee file
+    df.drop(columns=["full_name"]).to_csv("employees.csv", index=False)
+
+    st.success("Lottery Complete + Win Counts Updated")
 
 # -----------------------
 # VIEW RESULTS
