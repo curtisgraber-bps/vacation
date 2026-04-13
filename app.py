@@ -223,6 +223,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         c.execute("DELETE FROM results")
         conn.commit()
 
+    # WHO SUBMITTED
     st.subheader("Who Has Submitted")
 
     subs = pd.read_sql_query("SELECT employee_id FROM submissions", conn)
@@ -236,6 +237,28 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.write(view[["first_name", "last_name"]].sort_values(by="last_name"))
 
+    # FULL SUBMISSION DETAILS
+    st.subheader("Submission Details")
+
+    subs_full = pd.read_sql_query("SELECT * FROM submissions", conn)
+
+    view_full = subs_full.merge(
+        emps[["employee_id", "first_name", "last_name"]],
+        on="employee_id",
+        how="left"
+    )
+
+    def combine_choices(row):
+        return ", ".join([row[f"choice{i}"] for i in range(1, 11) if row[f"choice{i}"]])
+
+    view_full["choices"] = view_full.apply(combine_choices, axis=1)
+
+    st.write(
+        view_full[["first_name", "last_name", "choices"]]
+        .sort_values(by="last_name")
+    )
+
+    # TEST DATA
     if st.button("Generate Test Submissions"):
         c.execute("DELETE FROM submissions")
         employees = get_employees()
@@ -254,11 +277,10 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.success("Test submissions generated")
 
+    # RESET PASSWORD
     st.subheader("Reset Individual Password")
 
-    emp_list = get_employees()
-    emp_options = emp_list["employee_id"] + " - " + emp_list["first_name"] + " " + emp_list["last_name"]
-
+    emp_options = emps["employee_id"] + " - " + emps["first_name"] + " " + emps["last_name"]
     selected = st.selectbox("Select Employee", emp_options)
 
     if st.button("Reset Password"):
@@ -267,6 +289,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.success("Password reset")
 
+    # ADD EMPLOYEE
     st.subheader("Add Employee")
 
     with st.form("add_employee_form"):
@@ -291,6 +314,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
                 except:
                     st.error("Employee ID exists")
 
+    # EDIT EMPLOYEES
     st.subheader("Edit Employees")
     edit_df = st.data_editor(get_employees())
 
@@ -316,15 +340,16 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.success("Employees updated")
 
+    # LOTTERY
     st.subheader("Run Lottery")
 
     if st.button("Run Lottery"):
         c.execute("DELETE FROM results")
 
         employees = get_employees()
-        subs = {str(r["employee_id"]).strip(): r for r in c.execute("SELECT * FROM submissions")}
+        subs_dict = {str(r["employee_id"]).strip(): r for r in c.execute("SELECT * FROM submissions")}
 
-        employees = employees[employees["employee_id"].isin(subs.keys())]
+        employees = employees[employees["employee_id"].isin(subs_dict.keys())]
         employees = employees.sort_values(by=["win_count", "hire_date"])
 
         taken = set()
@@ -332,7 +357,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
         for _, emp in employees.iterrows():
             emp_id = emp["employee_id"]
-            sub = subs[emp_id]
+            sub = subs_dict[emp_id]
 
             for i in range(1, 11):
                 choice = sub[f"choice{i}"]
@@ -351,11 +376,11 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.success("Lottery Complete")
 
+    # RESULTS + DOWNLOAD
     results_df = pd.read_sql_query("SELECT * FROM results", conn)
-    fresh = get_employees()
 
     results_df = results_df.merge(
-        fresh[["employee_id", "first_name", "last_name", "win_count"]],
+        emps[["employee_id", "first_name", "last_name", "win_count"]],
         on="employee_id",
         how="left"
     )
