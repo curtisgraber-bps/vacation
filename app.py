@@ -55,6 +55,9 @@ if c.execute("SELECT COUNT(*) FROM employees").fetchone()[0] == 0:
     df = pd.read_csv("employees.csv")
     df["employee_id"] = df["employee_id"].astype(str)
 
+    # FIX: clean win_count
+    df["win_count"] = pd.to_numeric(df["win_count"], errors="coerce").fillna(0).astype(int)
+
     for _, row in df.iterrows():
         c.execute("INSERT INTO employees VALUES (?, ?, ?, ?, ?)", (
             row["employee_id"],
@@ -148,7 +151,6 @@ if admin:
 
     st.success("Admin Access")
 
-    # RESET
     if st.button("Clear Submissions"):
         c.execute("DELETE FROM submissions")
         conn.commit()
@@ -159,18 +161,17 @@ if admin:
         conn.commit()
         st.success("Results cleared")
 
-    # EDIT EMPLOYEES
     st.subheader("Edit Employees")
     edit_df = st.data_editor(employees_df)
 
     if st.button("Save Employee Changes"):
+        edit_df["win_count"] = pd.to_numeric(edit_df["win_count"], errors="coerce").fillna(0).astype(int)
         c.execute("DELETE FROM employees")
         for _, row in edit_df.iterrows():
             c.execute("INSERT INTO employees VALUES (?, ?, ?, ?, ?)", tuple(row))
         conn.commit()
         st.success("Employees updated")
 
-    # MANAGE WEEKS
     st.subheader("Manage Weeks")
     weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
     edited_weeks = st.data_editor(weeks_df)
@@ -182,7 +183,6 @@ if admin:
         conn.commit()
         st.success("Weeks updated")
 
-    # RUN LOTTERY
     st.subheader("Run Lottery")
 
     if st.button("Run Lottery"):
@@ -190,16 +190,14 @@ if admin:
 
         employees = pd.read_sql_query("SELECT * FROM employees", conn)
 
-        # FIX: ensure correct types
-        employees["win_count"] = employees["win_count"].astype(int)
-        employees["hire_date"] = pd.to_datetime(employees["hire_date"])
+        # FIX: clean + correct types
+        employees["win_count"] = pd.to_numeric(employees["win_count"], errors="coerce").fillna(0).astype(int)
+        employees["hire_date"] = pd.to_datetime(employees["hire_date"], errors="coerce")
 
         subs_rows = c.execute("SELECT * FROM submissions").fetchall()
         subs_dict = {row["employee_id"]: row for row in subs_rows}
 
         employees = employees[employees["employee_id"].isin(subs_dict.keys())]
-
-        # CORE SORT (this is the rule you want)
         employees = employees.sort_values(by=["win_count", "hire_date"])
 
         taken = set()
@@ -227,7 +225,6 @@ if admin:
         conn.commit()
         st.success("Lottery Complete")
 
-    # RESULTS
     results_df = pd.read_sql_query("SELECT * FROM results", conn)
 
     results_df = results_df.merge(
