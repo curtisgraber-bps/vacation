@@ -115,13 +115,11 @@ if not st.session_state.logged_in:
 
         if emp.empty:
             st.error("Employee not found")
-
         else:
             emp = emp.iloc[0]
 
             if not emp["password_hash"] or pd.isna(emp["password_hash"]):
                 st.info("First time login – create your password")
-
                 new_pw = st.text_input("Create Password", type="password")
 
                 if st.button("Set Password"):
@@ -135,7 +133,6 @@ if not st.session_state.logged_in:
                         )
                         conn.commit()
                         st.success("Password set. Log in now.")
-
             else:
                 pw = st.text_input("Password", type="password")
 
@@ -210,6 +207,20 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         c.execute("DELETE FROM results")
         conn.commit()
 
+    # WHO HAS SUBMITTED
+    st.subheader("Who Has Submitted")
+
+    subs = pd.read_sql_query("SELECT employee_id FROM submissions", conn)
+    emps = get_employees()
+
+    view = subs.merge(
+        emps[["employee_id", "first_name", "last_name"]],
+        on="employee_id",
+        how="left"
+    )
+
+    st.write(view[["first_name", "last_name"]].sort_values(by="last_name"))
+
     # TEST DATA
     if st.button("Generate Test Submissions"):
         c.execute("DELETE FROM submissions")
@@ -229,7 +240,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.success("Test submissions generated")
 
-    # RESET INDIVIDUAL PASSWORD
+    # RESET PASSWORD
     st.subheader("Reset Individual Password")
 
     emp_list = get_employees()
