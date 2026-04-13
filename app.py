@@ -6,10 +6,10 @@ import datetime
 # -----------------------
 # CONFIG
 # -----------------------
-ADMIN_PASSWORD = "admin123"  # change this
+ADMIN_PASSWORD = "admin123"
 
 # -----------------------
-# DATABASE SETUP
+# DATABASE
 # -----------------------
 conn = sqlite3.connect("data.db", check_same_thread=False)
 conn.row_factory = sqlite3.Row
@@ -87,7 +87,7 @@ if login_id and login_last:
         st.error("Invalid login")
 
 # -----------------------
-# SUBMISSION UI (ONLY IF LOGGED IN)
+# SUBMISSION
 # -----------------------
 if employee is not None:
 
@@ -110,9 +110,10 @@ if employee is not None:
             if all(not c for c in choices):
                 st.error("Select at least one week")
             else:
-                c.execute("""
-                    INSERT INTO submissions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (employee_id, *choices))
+                c.execute(
+                    "INSERT INTO submissions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (employee_id, *choices)
+                )
                 conn.commit()
                 st.success("Submitted")
 
@@ -121,18 +122,17 @@ if employee is not None:
 # -----------------------
 st.header("Admin Login")
 
-admin_input = st.text_input("Enter Admin Password", type="password")
+admin_input = st.text_input("Admin Password", type="password")
 is_admin = admin_input == ADMIN_PASSWORD
 
 # -----------------------
-# ADMIN SECTION
+# ADMIN
 # -----------------------
 if is_admin:
 
     st.success("Admin Access Granted")
 
-    st.subheader("Run Allocation")
-
+    # RUN LOTTERY
     if st.button("Run Lottery"):
         c.execute("DELETE FROM results")
 
@@ -152,34 +152,34 @@ if is_admin:
             emp_id = emp["employee_id"]
             sub = subs_dict[emp_id]
 
-            assigned = None
-
             for i in range(1, 11):
                 choice = sub[f"choice{i}"]
                 if choice and choice not in taken_weeks:
-                    assigned = choice
                     taken_weeks.add(choice)
+                    winners.append((emp_id, choice))
                     break
 
-            if assigned:
-                winners.append(emp_id)
-                c.execute(
-                    "INSERT INTO results (employee_id, assigned_week) VALUES (?, ?)",
-                    (emp_id, assigned)
-                )
+        for emp_id, week in winners:
+            c.execute(
+                "INSERT INTO results (employee_id, assigned_week) VALUES (?, ?)",
+                (emp_id, week)
+            )
 
         conn.commit()
-
-        for emp_id in winners:
-            df.loc[df["employee_id"] == emp_id, "win_count"] += 1
-
-        df.to_csv("employees.csv", index=False)
-
         st.success("Lottery Complete")
 
+    # VIEW RESULTS
     st.subheader("Results")
-    results = c.execute("SELECT * FROM results").fetchall()
-    st.write([dict(r) for r in results])
 
-else:
-    st.info("Enter admin password to access admin controls")
+    results_df = pd.read_sql_query("SELECT * FROM results", conn)
+    st.write(results_df)
+
+    # DOWNLOAD BUTTON
+    csv = results_df.to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+        "Download Results CSV",
+        data=csv,
+        file_name="vacation_results.csv",
+        mime="text/csv"
+    )
