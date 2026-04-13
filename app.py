@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import datetime
-import os
 
 # -----------------------
 # DATABASE SETUP
@@ -11,7 +10,7 @@ conn = sqlite3.connect("data.db", check_same_thread=False)
 c = conn.cursor()
 
 c.execute("""
-CREATE TABLE submissions (
+CREATE TABLE IF NOT EXISTS submissions (
     employee_id TEXT PRIMARY KEY,
     choice1 TEXT,
     choice2 TEXT,
@@ -72,26 +71,4 @@ if existing:
 else:
     choices = []
     for i in range(1, 11):
-        choice = st.selectbox(f"Choice {i}", [""] + weeks, key=f"choice_{i}")
-        choices.append(choice)
-
-    if st.button("Submit"):
-        if all(not c for c in choices):
-            st.error("Select at least one week")
-        else:
-            c.execute("""
-                INSERT INTO submissions (
-                    employee_id, choice1, choice2, choice3, choice4,
-                    choice5, choice6, choice7, choice8, choice9, choice10
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (employee_id, *choices))
-
-            conn.commit()
-            st.success("Submitted")
-
-# -----------------------
-# ADMIN VIEW
-# -----------------------
-st.header("Admin View")
-rows = c.execute("SELECT * FROM submissions").fetchall()
-st.write(rows)
+        choice
