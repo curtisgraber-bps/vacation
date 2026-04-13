@@ -10,9 +10,7 @@ conn = sqlite3.connect("data.db", check_same_thread=False)
 conn.row_factory = sqlite3.Row
 c = conn.cursor()
 
-# -----------------------
 # TABLES
-# -----------------------
 c.execute("""
 CREATE TABLE IF NOT EXISTS employees (
     employee_id TEXT PRIMARY KEY,
@@ -54,9 +52,7 @@ CREATE TABLE IF NOT EXISTS weeks (
 )
 """)
 
-# -----------------------
-# INITIAL LOAD FROM CSV
-# -----------------------
+# INITIAL LOAD
 if c.execute("SELECT COUNT(*) FROM employees").fetchone()[0] == 0:
     df = pd.read_csv("employees.csv")
     df["employee_id"] = df["employee_id"].astype(str).str.strip()
@@ -69,9 +65,7 @@ if c.execute("SELECT COUNT(*) FROM employees").fetchone()[0] == 0:
         )
     conn.commit()
 
-# -----------------------
 # HELPERS
-# -----------------------
 def get_employees():
     df = pd.read_sql_query("SELECT * FROM employees", conn)
     df["employee_id"] = df["employee_id"].astype(str).str.strip()
@@ -91,9 +85,7 @@ def generate_weeks():
         start += datetime.timedelta(days=1)
     return [f"{start + datetime.timedelta(weeks=i)} to {start + datetime.timedelta(weeks=i, days=7)}" for i in range(52)]
 
-# -----------------------
 # INIT WEEKS
-# -----------------------
 if c.execute("SELECT COUNT(*) FROM weeks").fetchone()[0] == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (?, ?)", (w, 1))
@@ -101,70 +93,71 @@ if c.execute("SELECT COUNT(*) FROM weeks").fetchone()[0] == 0:
 
 active_weeks = pd.read_sql_query("SELECT week FROM weeks WHERE enabled = 1", conn)["week"].tolist()
 
-# -----------------------
-# SESSION INIT
-# -----------------------
+# SESSION
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.role = None
     st.session_state.user_id = None
 
-# -----------------------
 # LOGIN
-# -----------------------
 if not st.session_state.logged_in:
 
     st.title("Login")
 
-    login_id = st.text_input("Employee ID")
-    admin_pass = st.text_input("Admin Password (optional)", type="password")
+    is_admin = st.checkbox("Admin login")
 
-    if admin_pass == ADMIN_PASSWORD and st.button("Login as Admin"):
-        st.session_state.logged_in = True
-        st.session_state.role = "admin"
-        st.rerun()
+    if is_admin:
+        admin_pw = st.text_input("Admin Password", type="password")
 
-    if login_id:
-
-        employees_df = get_employees()
-        emp = employees_df[employees_df["employee_id"] == str(login_id).strip()]
-
-        if not emp.empty:
-            emp = emp.iloc[0]
-
-            if not emp["password_hash"]:
-                new_pw = st.text_input("Create Password", type="password")
-                if st.button("Set Password"):
-                    h = hash_pw(new_pw)
-                    c.execute(
-                        "UPDATE employees SET password_hash=? WHERE employee_id=?",
-                        (h, str(login_id).strip())
-                    )
-                    conn.commit()
-                    st.success("Password set. Refresh and log in.")
-
+        if st.button("Login"):
+            if admin_pw == ADMIN_PASSWORD:
+                st.session_state.logged_in = True
+                st.session_state.role = "admin"
+                st.rerun()
             else:
-                pw = st.text_input("Password", type="password")
-                if st.button("Login"):
-                    if check_pw(pw, emp["password_hash"]):
-                        st.session_state.logged_in = True
-                        st.session_state.role = "user"
-                        st.session_state.user_id = str(login_id).strip()
-                        st.rerun()
-                    else:
-                        st.error("Invalid password")
+                st.error("Invalid admin password")
 
-# -----------------------
+    else:
+        login_id = st.text_input("Employee ID")
+
+        if login_id:
+            employees_df = get_employees()
+            emp = employees_df[employees_df["employee_id"] == str(login_id).strip()]
+
+            if not emp.empty:
+                emp = emp.iloc[0]
+
+                if not emp["password_hash"]:
+                    new_pw = st.text_input("Create Password", type="password")
+
+                    if st.button("Set Password"):
+                        h = hash_pw(new_pw)
+                        c.execute(
+                            "UPDATE employees SET password_hash=? WHERE employee_id=?",
+                            (h, str(login_id).strip())
+                        )
+                        conn.commit()
+                        st.success("Password set. Refresh and log in.")
+
+                else:
+                    pw = st.text_input("Password", type="password")
+
+                    if st.button("Login"):
+                        if check_pw(pw, emp["password_hash"]):
+                            st.session_state.logged_in = True
+                            st.session_state.role = "user"
+                            st.session_state.user_id = str(login_id).strip()
+                            st.rerun()
+                        else:
+                            st.error("Invalid password")
+
 # LOGOUT
-# -----------------------
 if st.session_state.logged_in:
     if st.button("Logout"):
         st.session_state.clear()
         st.rerun()
 
-# -----------------------
 # USER VIEW
-# -----------------------
 if st.session_state.logged_in and st.session_state.role == "user":
 
     st.title("Vacation Scheduler")
@@ -191,9 +184,7 @@ if st.session_state.logged_in and st.session_state.role == "user":
                 conn.commit()
                 st.success("Submitted")
 
-# -----------------------
 # ADMIN VIEW
-# -----------------------
 if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.title("Admin Panel")
@@ -209,7 +200,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
     if st.button("Reset All Passwords"):
         c.execute("UPDATE employees SET password_hash=NULL")
         conn.commit()
-        st.success("All passwords cleared")
+        st.success("Passwords cleared")
 
     st.subheader("Edit Employees")
     edit_df = st.data_editor(get_employees())
