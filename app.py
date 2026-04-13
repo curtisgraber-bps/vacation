@@ -2,6 +2,13 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import datetime
+import os
+
+# -----------------------
+# RESET DATABASE (RUN ONCE)
+# -----------------------
+if os.path.exists("data.db"):
+    os.remove("data.db")
 
 # -----------------------
 # DATABASE SETUP
@@ -10,7 +17,7 @@ conn = sqlite3.connect("data.db", check_same_thread=False)
 c = conn.cursor()
 
 c.execute("""
-CREATE TABLE IF NOT EXISTS submissions (
+CREATE TABLE submissions (
     employee_id TEXT PRIMARY KEY,
     choice1 TEXT,
     choice2 TEXT,
