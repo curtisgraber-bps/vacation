@@ -3,21 +3,13 @@ import pandas as pd
 import sqlite3
 import datetime
 
-# -----------------------
-# CONFIG
-# -----------------------
 ADMIN_PASSWORD = "admin123"
 
-# -----------------------
-# DATABASE
-# -----------------------
 conn = sqlite3.connect("data.db", check_same_thread=False)
 conn.row_factory = sqlite3.Row
 c = conn.cursor()
 
-# -----------------------
 # TABLES
-# -----------------------
 c.execute("""
 CREATE TABLE IF NOT EXISTS employees (
     employee_id TEXT PRIMARY KEY,
@@ -58,9 +50,7 @@ CREATE TABLE IF NOT EXISTS weeks (
 )
 """)
 
-# -----------------------
-# INITIAL LOAD FROM CSV (ONCE)
-# -----------------------
+# INITIAL LOAD FROM CSV (only if empty)
 if c.execute("SELECT COUNT(*) FROM employees").fetchone()[0] == 0:
     df = pd.read_csv("employees.csv")
     df["employee_id"] = df["employee_id"].astype(str)
@@ -71,18 +61,14 @@ if c.execute("SELECT COUNT(*) FROM employees").fetchone()[0] == 0:
             row["first_name"],
             row["last_name"],
             row["hire_date"],
-            row["win_count"]
+            int(row["win_count"])
         ))
     conn.commit()
 
-# -----------------------
-# LOAD EMPLOYEES FROM DB
-# -----------------------
+# LOAD EMPLOYEES
 employees_df = pd.read_sql_query("SELECT * FROM employees", conn)
 
-# -----------------------
 # GENERATE WEEKS
-# -----------------------
 def generate_weeks(year=2027):
     start = datetime.date(year, 1, 1)
     while start.weekday() != 5:
@@ -95,9 +81,7 @@ def generate_weeks(year=2027):
         weeks.append(f"{s} to {e}")
     return weeks
 
-# -----------------------
 # INIT WEEKS
-# -----------------------
 if c.execute("SELECT COUNT(*) FROM weeks").fetchone()[0] == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (?, ?)", (w, 1))
@@ -107,9 +91,7 @@ active_weeks = pd.read_sql_query(
     "SELECT week FROM weeks WHERE enabled = 1", conn
 )["week"].tolist()
 
-# -----------------------
 # LOGIN
-# -----------------------
 st.title("Vacation Scheduler")
 
 login_id = st.text_input("Employee ID")
@@ -129,9 +111,7 @@ if login_id and login_last:
     else:
         st.error("Invalid login")
 
-# -----------------------
 # SUBMISSION
-# -----------------------
 if employee is not None:
 
     employee_id = employee["employee_id"]
@@ -160,20 +140,15 @@ if employee is not None:
                 conn.commit()
                 st.success("Submitted")
 
-# -----------------------
 # ADMIN LOGIN
-# -----------------------
 admin = st.text_input("Admin Password", type="password") == ADMIN_PASSWORD
 
-# -----------------------
 # ADMIN PANEL
-# -----------------------
 if admin:
 
     st.success("Admin Access")
 
     # RESET
-    st.subheader("Reset Data")
     if st.button("Clear Submissions"):
         c.execute("DELETE FROM submissions")
         conn.commit()
@@ -215,10 +190,16 @@ if admin:
 
         employees = pd.read_sql_query("SELECT * FROM employees", conn)
 
+        # FIX: ensure correct types
+        employees["win_count"] = employees["win_count"].astype(int)
+        employees["hire_date"] = pd.to_datetime(employees["hire_date"])
+
         subs_rows = c.execute("SELECT * FROM submissions").fetchall()
         subs_dict = {row["employee_id"]: row for row in subs_rows}
 
         employees = employees[employees["employee_id"].isin(subs_dict.keys())]
+
+        # CORE SORT (this is the rule you want)
         employees = employees.sort_values(by=["win_count", "hire_date"])
 
         taken = set()
@@ -237,7 +218,6 @@ if admin:
                         (emp_id, choice)
                     )
 
-                    # UPDATE WIN COUNT
                     c.execute(
                         "UPDATE employees SET win_count = win_count + 1 WHERE employee_id = ?",
                         (emp_id,)
@@ -248,9 +228,8 @@ if admin:
         st.success("Lottery Complete")
 
     # RESULTS
-    st.subheader("Results")
-
     results_df = pd.read_sql_query("SELECT * FROM results", conn)
+
     results_df = results_df.merge(
         employees_df[["employee_id", "first_name", "last_name"]],
         on="employee_id",
