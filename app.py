@@ -70,7 +70,7 @@ def generate_weeks(year=2027):
 all_weeks = generate_weeks()
 
 # -----------------------
-# INIT WEEKS
+# INIT WEEKS TABLE
 # -----------------------
 existing_weeks = c.execute("SELECT week FROM weeks").fetchall()
 if not existing_weeks:
@@ -85,7 +85,7 @@ weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
 active_weeks = weeks_df[weeks_df["enabled"] == 1]["week"].tolist()
 
 # -----------------------
-# LOGIN
+# EMPLOYEE LOGIN
 # -----------------------
 st.title("Vacation Scheduler")
 
@@ -101,6 +101,7 @@ if login_id and login_last:
         (df["employee_id"] == login_id) &
         (df["last_name"].str.lower() == login_last.lower())
     ]
+
     if not match.empty:
         employee = match.iloc[0]
         st.success(f"Welcome {employee['first_name']}")
@@ -120,7 +121,7 @@ if employee is not None:
     ).fetchone()
 
     if existing:
-        st.warning("Already submitted")
+        st.warning("You have already submitted your selections.")
     else:
         choices = []
         for i in range(1, 11):
@@ -153,7 +154,9 @@ if is_admin:
 
     st.success("Admin Access Granted")
 
+    # -----------------------
     # MANAGE WEEKS
+    # -----------------------
     st.subheader("Manage Weeks")
 
     weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
@@ -162,11 +165,16 @@ if is_admin:
     if st.button("Save Week Changes"):
         c.execute("DELETE FROM weeks")
         for _, row in edited_weeks.iterrows():
-            c.execute("INSERT INTO weeks VALUES (?, ?)", (row["week"], int(row["enabled"])))
+            c.execute(
+                "INSERT INTO weeks VALUES (?, ?)",
+                (row["week"], int(row["enabled"]))
+            )
         conn.commit()
         st.success("Weeks updated")
 
+    # -----------------------
     # RUN LOTTERY
+    # -----------------------
     st.subheader("Run Lottery")
 
     if st.button("Run Lottery"):
@@ -209,19 +217,35 @@ if is_admin:
         st.success("Lottery Complete")
 
     # -----------------------
-    # RESULTS WITH NAMES
+    # RESULTS + EXPORT
     # -----------------------
     st.subheader("Results")
 
     results_df = pd.read_sql_query("SELECT * FROM results", conn)
 
-    # JOIN WITH EMPLOYEES
+    # JOIN NAMES
     results_df = results_df.merge(
         df[["employee_id", "first_name", "last_name"]],
         on="employee_id",
         how="left"
     )
 
-    # REORDER
+    # REORDER COLUMNS
     results_df = results_df[
-        ["employee_id", "first_name", "last_name
+        ["employee_id", "first_name", "last_name", "assigned_week"]
+    ]
+
+    st.write(results_df)
+
+    # DOWNLOAD
+    csv = results_df.to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+        "Download Results CSV",
+        data=csv,
+        file_name="vacation_results.csv",
+        mime="text/csv"
+    )
+
+else:
+    st.info("Enter admin password to access admin controls")
