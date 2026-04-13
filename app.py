@@ -3,19 +3,25 @@ import pandas as pd
 import sqlite3
 import datetime
 
-# -----------------------
-# CONFIG
-# -----------------------
 ADMIN_PASSWORD = "admin123"
 
-# -----------------------
-# DATABASE
-# -----------------------
 conn = sqlite3.connect("data.db", check_same_thread=False)
 conn.row_factory = sqlite3.Row
 c = conn.cursor()
 
-# tables
+# -----------------------
+# TABLES
+# -----------------------
+c.execute("""
+CREATE TABLE IF NOT EXISTS employees (
+    employee_id TEXT PRIMARY KEY,
+    first_name TEXT,
+    last_name TEXT,
+    hire_date TEXT,
+    win_count INTEGER
+)
+""")
+
 c.execute("""
 CREATE TABLE IF NOT EXISTS submissions (
     employee_id TEXT PRIMARY KEY,
@@ -47,10 +53,29 @@ CREATE TABLE IF NOT EXISTS weeks (
 """)
 
 # -----------------------
-# LOAD EMPLOYEES
+# LOAD CSV INTO DB (ONCE)
 # -----------------------
-df = pd.read_csv("employees.csv")
-df["employee_id"] = df["employee_id"].astype(str)
+if c.execute("SELECT COUNT(*) FROM employees").fetchone()[0] == 0:
+    df = pd.read_csv("employees.csv")
+    df["employee_id"] = df["employee_id"].astype(str)
+
+    for _, row in df.iterrows():
+        c.execute("""
+            INSERT INTO employees VALUES (?, ?, ?, ?, ?)
+        """, (
+            row["employee_id"],
+            row["first_name"],
+            row["last_name"],
+            row["hire_date"],
+            row["win_count"]
+        ))
+
+    conn.commit()
+
+# -----------------------
+# LOAD EMPLOYEES FROM DB
+# -----------------------
+employees_df = pd.read_sql_query("SELECT * FROM employees", conn)
 
 # -----------------------
 # GENERATE WEEKS
@@ -69,27 +94,19 @@ def generate_weeks(year=2027):
 
 all_weeks = generate_weeks()
 
-# -----------------------
-# INIT WEEKS
-# -----------------------
-existing_weeks = c.execute("SELECT week FROM weeks").fetchall()
-if not existing_weeks:
+if c.execute("SELECT COUNT(*) FROM weeks").fetchone()[0] == 0:
     for w in all_weeks:
         c.execute("INSERT INTO weeks VALUES (?, ?)", (w, 1))
     conn.commit()
 
-# -----------------------
-# ACTIVE WEEKS
-# -----------------------
-weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
-active_weeks = weeks_df[weeks_df["enabled"] == 1]["week"].tolist()
+active_weeks = pd.read_sql_query(
+    "SELECT week FROM weeks WHERE enabled = 1", conn
+)["week"].tolist()
 
 # -----------------------
-# EMPLOYEE LOGIN
+# LOGIN
 # -----------------------
 st.title("Vacation Scheduler")
-
-st.header("Employee Login")
 
 login_id = st.text_input("Employee ID")
 login_last = st.text_input("Last Name")
@@ -97,9 +114,9 @@ login_last = st.text_input("Last Name")
 employee = None
 
 if login_id and login_last:
-    match = df[
-        (df["employee_id"] == login_id) &
-        (df["last_name"].str.lower() == login_last.lower())
+    match = employees_df[
+        (employees_df["employee_id"] == login_id) &
+        (employees_df["last_name"].str.lower() == login_last.lower())
     ]
 
     if not match.empty:
@@ -109,7 +126,7 @@ if login_id and login_last:
         st.error("Invalid login")
 
 # -----------------------
-# SUBMISSION
+# SUBMIT
 # -----------------------
 if employee is not None:
 
@@ -121,11 +138,11 @@ if employee is not None:
     ).fetchone()
 
     if existing:
-        st.warning("You have already submitted your selections.")
+        st.warning("Already submitted")
     else:
         choices = []
         for i in range(1, 11):
-            choice = st.selectbox(f"Choice {i}", [""] + active_weeks, key=f"choice_{i}")
+            choice = st.selectbox(f"Choice {i}", [""] + active_weeks, key=f"c{i}")
             choices.append(choice)
 
         if st.button("Submit"):
@@ -140,74 +157,18 @@ if employee is not None:
                 st.success("Submitted")
 
 # -----------------------
-# ADMIN LOGIN
+# ADMIN
 # -----------------------
-st.header("Admin Login")
+admin = st.text_input("Admin Password", type="password") == ADMIN_PASSWORD
 
-admin_input = st.text_input("Admin Password", type="password")
-is_admin = admin_input == ADMIN_PASSWORD
+if admin:
 
-# -----------------------
-# ADMIN PANEL
-# -----------------------
-if is_admin:
-
-    st.success("Admin Access Granted")
-
-    # -----------------------
-    # RESET
-    # -----------------------
-    st.subheader("Reset Data")
-
-    if st.button("Clear Submissions"):
-        c.execute("DELETE FROM submissions")
-        conn.commit()
-        st.success("Submissions cleared")
-
-    if st.button("Clear Results"):
-        c.execute("DELETE FROM results")
-        conn.commit()
-        st.success("Results cleared")
-
-    # -----------------------
-    # EDIT EMPLOYEES (WIN COUNT)
-    # -----------------------
-    st.subheader("Edit Employees (Win Counts, etc)")
-
-    edit_df = st.data_editor(df)
-
-    if st.button("Save Employee Changes"):
-        edit_df.to_csv("employees.csv", index=False)
-        st.success("Employee data updated")
-
-    # -----------------------
-    # MANAGE WEEKS
-    # -----------------------
-    st.subheader("Manage Weeks")
-
-    weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
-    edited_weeks = st.data_editor(weeks_df)
-
-    if st.button("Save Week Changes"):
-        c.execute("DELETE FROM weeks")
-        for _, row in edited_weeks.iterrows():
-            c.execute(
-                "INSERT INTO weeks VALUES (?, ?)",
-                (row["week"], int(row["enabled"]))
-            )
-        conn.commit()
-        st.success("Weeks updated")
-
-    # -----------------------
-    # RUN LOTTERY
-    # -----------------------
-    st.subheader("Run Lottery")
+    st.success("Admin")
 
     if st.button("Run Lottery"):
         c.execute("DELETE FROM results")
 
-        employees = pd.read_csv("employees.csv")
-        employees["employee_id"] = employees["employee_id"].astype(str)
+        employees = pd.read_sql_query("SELECT * FROM employees", conn)
 
         subs_rows = c.execute("SELECT * FROM submissions").fetchall()
         subs_dict = {row["employee_id"]: row for row in subs_rows}
@@ -215,11 +176,7 @@ if is_admin:
         employees = employees[employees["employee_id"].isin(subs_dict.keys())]
         employees = employees.sort_values(by=["win_count", "hire_date"])
 
-        active_weeks = pd.read_sql_query(
-            "SELECT week FROM weeks WHERE enabled = 1", conn
-        )["week"].tolist()
-
-        taken_weeks = set()
+        taken = set()
         winners = []
 
         for _, emp in employees.iterrows():
@@ -228,56 +185,22 @@ if is_admin:
 
             for i in range(1, 11):
                 choice = sub[f"choice{i}"]
-                if choice and choice not in taken_weeks and choice in active_weeks:
-                    taken_weeks.add(choice)
+                if choice and choice not in taken:
+                    taken.add(choice)
                     winners.append((emp_id, choice))
                     break
 
         for emp_id, week in winners:
+            c.execute("INSERT INTO results VALUES (?, ?)", (emp_id, week))
+
+            # UPDATE WIN COUNT IN DB
             c.execute(
-                "INSERT INTO results VALUES (?, ?)",
-                (emp_id, week)
+                "UPDATE employees SET win_count = win_count + 1 WHERE employee_id = ?",
+                (emp_id,)
             )
 
         conn.commit()
+        st.success("Lottery Complete + Persisted")
 
-        # -----------------------
-        # AUTO UPDATE WIN COUNT
-        # -----------------------
-        for emp_id, _ in winners:
-            df.loc[df["employee_id"] == emp_id, "win_count"] += 1
-
-        df.to_csv("employees.csv", index=False)
-
-        st.success("Lottery Complete + Win Counts Updated")
-
-    # -----------------------
-    # RESULTS
-    # -----------------------
-    st.subheader("Results")
-
-    results_df = pd.read_sql_query("SELECT * FROM results", conn)
-
-    results_df = results_df.merge(
-        df[["employee_id", "first_name", "last_name"]],
-        on="employee_id",
-        how="left"
-    )
-
-    results_df = results_df[
-        ["employee_id", "first_name", "last_name", "assigned_week"]
-    ]
-
-    st.write(results_df)
-
-    csv = results_df.to_csv(index=False).encode("utf-8")
-
-    st.download_button(
-        "Download Results",
-        csv,
-        "vacation_results.csv",
-        "text/csv"
-    )
-
-else:
-    st.info("Enter admin password to access admin controls")
+    results = pd.read_sql_query("SELECT * FROM results", conn)
+    st.write(results)
