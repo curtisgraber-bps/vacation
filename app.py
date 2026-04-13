@@ -36,6 +36,10 @@ CREATE TABLE IF NOT EXISTS results (
 # LOAD EMPLOYEES
 # -----------------------
 df = pd.read_csv("employees.csv")
+
+# FORCE employee_id to string
+df["employee_id"] = df["employee_id"].astype(str)
+
 df["full_name"] = df["first_name"] + " " + df["last_name"]
 
 # -----------------------
@@ -57,7 +61,7 @@ def generate_weeks(year=2027):
 weeks = generate_weeks()
 
 # -----------------------
-# UI
+# UI - SUBMISSIONS
 # -----------------------
 st.title("Vacation Scheduler")
 
@@ -98,11 +102,13 @@ if st.button("Run Lottery"):
     c.execute("DELETE FROM results")
 
     employees = pd.read_csv("employees.csv")
+    employees["employee_id"] = employees["employee_id"].astype(str)
+
     subs = pd.read_sql_query("SELECT * FROM submissions", conn)
+    subs["employee_id"] = subs["employee_id"].astype(str)
 
     merged = pd.merge(employees, subs, on="employee_id")
 
-    # Sort: lowest wins first, then oldest hire date
     merged = merged.sort_values(by=["win_count", "hire_date"])
 
     taken_weeks = set()
