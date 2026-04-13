@@ -57,7 +57,6 @@ CREATE TABLE IF NOT EXISTS weeks (
 # -----------------------
 if c.execute("SELECT COUNT(*) FROM employees").fetchone()[0] == 0:
     df = pd.read_csv("employees.csv")
-
     df["employee_id"] = df["employee_id"].astype(str).str.strip()
     df["win_count"] = pd.to_numeric(df["win_count"], errors="coerce").fillna(0).astype(int)
 
@@ -171,13 +170,6 @@ admin = st.text_input("Admin Password", type="password") == ADMIN_PASSWORD
 if admin:
     st.success("Admin Access")
 
-    # HARD CLEAN (fix old bad data)
-    if st.button("Normalize IDs (one-time fix)"):
-        c.execute("UPDATE employees SET employee_id = TRIM(employee_id)")
-        c.execute("UPDATE submissions SET employee_id = TRIM(employee_id)")
-        conn.commit()
-        st.success("IDs normalized")
-
     if st.button("Clear Submissions"):
         c.execute("DELETE FROM submissions")
         conn.commit()
@@ -252,8 +244,9 @@ if admin:
                         (emp_id, choice),
                     )
 
+                    # FIXED LINE (this is the key)
                     c.execute(
-                        "UPDATE employees SET win_count = win_count + 1 WHERE employee_id = ?",
+                        "UPDATE employees SET win_count = CAST(win_count AS INTEGER) + 1 WHERE employee_id = ?",
                         (emp_id,),
                     )
                     break
@@ -261,7 +254,6 @@ if admin:
         conn.commit()
         st.success("Lottery Complete")
 
-    # RESULTS
     results_df = pd.read_sql_query("SELECT * FROM results", conn)
     fresh = get_employees()
 
