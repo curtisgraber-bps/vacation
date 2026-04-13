@@ -11,7 +11,7 @@ c = conn.cursor()
 
 c.execute("""
 CREATE TABLE IF NOT EXISTS submissions (
-    employee_id TEXT,
+    employee_id TEXT PRIMARY KEY,
     choice1 TEXT,
     choice2 TEXT,
     choice3 TEXT
@@ -30,7 +30,6 @@ df["full_name"] = df["first_name"] + " " + df["last_name"]
 def generate_weeks(year=2027):
     start = datetime.date(year, 1, 1)
 
-    # Find first Saturday
     while start.weekday() != 5:
         start += datetime.timedelta(days=1)
 
@@ -54,23 +53,29 @@ st.header("Select Your Vacation Weeks")
 selected = st.selectbox("Select Your Name", df["full_name"])
 employee_id = df[df["full_name"] == selected]["employee_id"].values[0]
 
-choice1 = st.selectbox("First Choice", [""] + weeks)
-choice2 = st.selectbox("Second Choice", [""] + weeks)
-choice3 = st.selectbox("Third Choice", [""] + weeks)
+# Check if already submitted
+existing = c.execute(
+    "SELECT 1 FROM submissions WHERE employee_id = ?",
+    (employee_id,)
+).fetchone()
 
-# -----------------------
-# SUBMIT
-# -----------------------
-if st.button("Submit"):
-    if not choice1 and not choice2 and not choice3:
-        st.error("Select at least one week")
-    else:
-        c.execute(
-            "INSERT INTO submissions (employee_id, choice1, choice2, choice3) VALUES (?, ?, ?, ?)",
-            (employee_id, choice1, choice2, choice3)
-        )
-        conn.commit()
-        st.success("Submitted")
+if existing:
+    st.warning("You have already submitted your selections.")
+else:
+    choice1 = st.selectbox("First Choice", [""] + weeks)
+    choice2 = st.selectbox("Second Choice", [""] + weeks)
+    choice3 = st.selectbox("Third Choice", [""] + weeks)
+
+    if st.button("Submit"):
+        if not choice1 and not choice2 and not choice3:
+            st.error("Select at least one week")
+        else:
+            c.execute(
+                "INSERT INTO submissions (employee_id, choice1, choice2, choice3) VALUES (?, ?, ?, ?)",
+                (employee_id, choice1, choice2, choice3)
+            )
+            conn.commit()
+            st.success("Submitted")
 
 # -----------------------
 # ADMIN VIEW
