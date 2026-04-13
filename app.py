@@ -25,12 +25,13 @@ df = pd.read_csv("employees.csv")
 df["full_name"] = df["first_name"] + " " + df["last_name"]
 
 # -----------------------
-# GENERATE WEEKS
+# GENERATE SATURDAY WEEKS (2027)
 # -----------------------
-def generate_weeks(year=2026):
+def generate_weeks(year=2027):
     start = datetime.date(year, 1, 1)
 
-    while start.weekday() != 5:  # Saturday
+    # Find first Saturday
+    while start.weekday() != 5:
         start += datetime.timedelta(days=1)
 
     weeks = []
