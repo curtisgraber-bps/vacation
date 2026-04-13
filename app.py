@@ -9,7 +9,9 @@ conn = sqlite3.connect("data.db", check_same_thread=False)
 conn.row_factory = sqlite3.Row
 c = conn.cursor()
 
+# -----------------------
 # TABLES
+# -----------------------
 c.execute("""
 CREATE TABLE IF NOT EXISTS employees (
     employee_id TEXT PRIMARY KEY,
@@ -50,23 +52,39 @@ CREATE TABLE IF NOT EXISTS weeks (
 )
 """)
 
-# INITIAL LOAD FROM CSV (only once)
+# -----------------------
+# INITIAL LOAD FROM CSV
+# -----------------------
 if c.execute("SELECT COUNT(*) FROM employees").fetchone()[0] == 0:
     df = pd.read_csv("employees.csv")
+
     df["employee_id"] = df["employee_id"].astype(str)
     df["win_count"] = pd.to_numeric(df["win_count"], errors="coerce").fillna(0).astype(int)
 
     for _, row in df.iterrows():
-        c.execute("INSERT INTO employees VALUES (?, ?, ?, ?, ?)", (
-            row["employee_id"],
-            row["first_name"],
-            row["last_name"],
-            row["hire_date"],
-            int(row["win_count"])
-        ))
+        c.execute(
+            "INSERT INTO employees VALUES (?, ?, ?, ?, ?)",
+            (
+                str(row["employee_id"]),
+                row["first_name"],
+                row["last_name"],
+                row["hire_date"],
+                int(row["win_count"]),
+            ),
+        )
     conn.commit()
 
-# GENERATE WEEKS
+# -----------------------
+# HELPERS
+# -----------------------
+def get_employees():
+    df = pd.read_sql_query("SELECT * FROM employees", conn)
+    df["employee_id"] = df["employee_id"].astype(str)
+    df["win_count"] = pd.to_numeric(df["win_count"], errors="coerce").fillna(0).astype(int)
+    df["hire_date"] = pd.to_datetime(df["hire_date"], errors="coerce")
+    return df
+
+
 def generate_weeks(year=2027):
     start = datetime.date(year, 1, 1)
     while start.weekday() != 5:
@@ -79,25 +97,22 @@ def generate_weeks(year=2027):
         weeks.append(f"{s} to {e}")
     return weeks
 
+
+# -----------------------
 # INIT WEEKS
+# -----------------------
 if c.execute("SELECT COUNT(*) FROM weeks").fetchone()[0] == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (?, ?)", (w, 1))
     conn.commit()
 
-# ACTIVE WEEKS
 active_weeks = pd.read_sql_query(
     "SELECT week FROM weeks WHERE enabled = 1", conn
 )["week"].tolist()
 
-# LOAD EMPLOYEES (always fresh)
-def get_employees():
-    df = pd.read_sql_query("SELECT * FROM employees", conn)
-    df["win_count"] = pd.to_numeric(df["win_count"], errors="coerce").fillna(0).astype(int)
-    df["hire_date"] = pd.to_datetime(df["hire_date"], errors="coerce")
-    return df
-
+# -----------------------
 # LOGIN
+# -----------------------
 st.title("Vacation Scheduler")
 
 login_id = st.text_input("Employee ID")
@@ -108,8 +123,8 @@ employees_df = get_employees()
 
 if login_id and login_last:
     match = employees_df[
-        (employees_df["employee_id"] == login_id) &
-        (employees_df["last_name"].str.lower() == login_last.lower())
+        (employees_df["employee_id"] == str(login_id))
+        & (employees_df["last_name"].str.lower() == login_last.lower())
     ]
 
     if not match.empty:
@@ -118,14 +133,14 @@ if login_id and login_last:
     else:
         st.error("Invalid login")
 
+# -----------------------
 # SUBMISSION
+# -----------------------
 if employee is not None:
-
-    employee_id = employee["employee_id"]
+    employee_id = str(employee["employee_id"])
 
     existing = c.execute(
-        "SELECT 1 FROM submissions WHERE employee_id = ?",
-        (employee_id,)
+        "SELECT 1 FROM submissions WHERE employee_id = ?", (employee_id,)
     ).fetchone()
 
     if existing:
@@ -142,16 +157,17 @@ if employee is not None:
             else:
                 c.execute(
                     "INSERT INTO submissions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (employee_id, *choices)
+                    (employee_id, *choices),
                 )
                 conn.commit()
                 st.success("Submitted")
 
-# ADMIN LOGIN
+# -----------------------
+# ADMIN
+# -----------------------
 admin = st.text_input("Admin Password", type="password") == ADMIN_PASSWORD
 
 if admin:
-
     st.success("Admin Access")
 
     if st.button("Clear Submissions"):
@@ -168,16 +184,26 @@ if admin:
     edit_df = st.data_editor(get_employees())
 
     if st.button("Save Employee Changes"):
-        edit_df["win_count"] = pd.to_numeric(edit_df["win_count"], errors="coerce").fillna(0).astype(int)
+        edit_df["win_count"] = (
+            pd.to_numeric(edit_df["win_count"], errors="coerce")
+            .fillna(0)
+            .astype(int)
+        )
+
         c.execute("DELETE FROM employees")
+
         for _, row in edit_df.iterrows():
-            c.execute("INSERT INTO employees VALUES (?, ?, ?, ?, ?)", (
-                str(row["employee_id"]),
-                row["first_name"],
-                row["last_name"],
-                str(row["hire_date"]),
-                int(row["win_count"])
-            ))
+            c.execute(
+                "INSERT INTO employees VALUES (?, ?, ?, ?, ?)",
+                (
+                    str(row["employee_id"]),
+                    row["first_name"],
+                    row["last_name"],
+                    str(row["hire_date"]),
+                    int(row["win_count"]),
+                ),
+            )
+
         conn.commit()
         st.success("Employees updated")
 
@@ -200,7 +226,7 @@ if admin:
         employees = get_employees()
 
         subs_rows = c.execute("SELECT * FROM submissions").fetchall()
-        subs_dict = {row["employee_id"]: row for row in subs_rows}
+        subs_dict = {str(row["employee_id"]): row for row in subs_rows}
 
         employees = employees[employees["employee_id"].isin(subs_dict.keys())]
         employees = employees.sort_values(by=["win_count", "hire_date"])
@@ -208,7 +234,7 @@ if admin:
         taken = set()
 
         for _, emp in employees.iterrows():
-            emp_id = emp["employee_id"]
+            emp_id = str(emp["employee_id"])
             sub = subs_dict[emp_id]
 
             for i in range(1, 11):
@@ -218,26 +244,26 @@ if admin:
 
                     c.execute(
                         "INSERT INTO results VALUES (?, ?)",
-                        (emp_id, choice)
+                        (emp_id, choice),
                     )
 
                     c.execute(
                         "UPDATE employees SET win_count = win_count + 1 WHERE employee_id = ?",
-                        (emp_id,)
+                        (emp_id,),
                     )
                     break
 
         conn.commit()
         st.success("Lottery Complete")
 
-    # RESULTS (always fresh)
+    # RESULTS
     results_df = pd.read_sql_query("SELECT * FROM results", conn)
-    fresh_employees = get_employees()
+    fresh = get_employees()
 
     results_df = results_df.merge(
-        fresh_employees[["employee_id", "first_name", "last_name"]],
+        fresh[["employee_id", "first_name", "last_name", "win_count"]],
         on="employee_id",
-        how="left"
+        how="left",
     )
 
     st.write(results_df)
@@ -248,5 +274,5 @@ if admin:
         "Download Results",
         csv,
         "results.csv",
-        "text/csv"
+        "text/csv",
     )
