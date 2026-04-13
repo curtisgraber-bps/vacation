@@ -1,12 +1,14 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
+import datetime
 
-# Connect DB
+# -----------------------
+# DATABASE SETUP
+# -----------------------
 conn = sqlite3.connect("data.db", check_same_thread=False)
 c = conn.cursor()
 
-# Create table
 c.execute("""
 CREATE TABLE IF NOT EXISTS submissions (
     employee_id TEXT,
@@ -16,33 +18,62 @@ CREATE TABLE IF NOT EXISTS submissions (
 )
 """)
 
-st.title("Vacation Scheduler")
-
+# -----------------------
+# LOAD EMPLOYEES
+# -----------------------
 df = pd.read_csv("employees.csv")
+df["full_name"] = df["first_name"] + " " + df["last_name"]
+
+# -----------------------
+# GENERATE WEEKS
+# -----------------------
+def generate_weeks(year=2026):
+    start = datetime.date(year, 1, 1)
+
+    while start.weekday() != 5:  # Saturday
+        start += datetime.timedelta(days=1)
+
+    weeks = []
+    for i in range(52):
+        week_start = start + datetime.timedelta(weeks=i)
+        week_end = week_start + datetime.timedelta(days=7)
+        weeks.append(f"{week_start} to {week_end}")
+
+    return weeks
+
+weeks = generate_weeks()
+
+# -----------------------
+# UI
+# -----------------------
+st.title("Vacation Scheduler")
 
 st.header("Select Your Vacation Weeks")
 
-# Show names, keep index for ID mapping
-df["full_name"] = df["first_name"] + " " + df["last_name"]
-
 selected = st.selectbox("Select Your Name", df["full_name"])
-
-# Get employee_id from selection
 employee_id = df[df["full_name"] == selected]["employee_id"].values[0]
 
-choice1 = st.text_input("First Choice")
-choice2 = st.text_input("Second Choice")
-choice3 = st.text_input("Third Choice")
+choice1 = st.selectbox("First Choice", [""] + weeks)
+choice2 = st.selectbox("Second Choice", [""] + weeks)
+choice3 = st.selectbox("Third Choice", [""] + weeks)
 
+# -----------------------
+# SUBMIT
+# -----------------------
 if st.button("Submit"):
-    c.execute(
-        "INSERT INTO submissions (employee_id, choice1, choice2, choice3) VALUES (?, ?, ?, ?)",
-        (employee_id, choice1, choice2, choice3)
-    )
-    conn.commit()
-    st.success("Submitted")
+    if not choice1 and not choice2 and not choice3:
+        st.error("Select at least one week")
+    else:
+        c.execute(
+            "INSERT INTO submissions (employee_id, choice1, choice2, choice3) VALUES (?, ?, ?, ?)",
+            (employee_id, choice1, choice2, choice3)
+        )
+        conn.commit()
+        st.success("Submitted")
 
-# Admin view
+# -----------------------
+# ADMIN VIEW
+# -----------------------
 st.header("Admin View")
 rows = c.execute("SELECT * FROM submissions").fetchall()
 st.write(rows)
