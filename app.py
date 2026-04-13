@@ -53,7 +53,7 @@ df = pd.read_csv("employees.csv")
 df["employee_id"] = df["employee_id"].astype(str)
 
 # -----------------------
-# GENERATE ALL WEEKS
+# GENERATE WEEKS
 # -----------------------
 def generate_weeks(year=2027):
     start = datetime.date(year, 1, 1)
@@ -70,23 +70,22 @@ def generate_weeks(year=2027):
 all_weeks = generate_weeks()
 
 # -----------------------
-# INIT WEEKS TABLE (RUNS ONCE)
+# INIT WEEKS
 # -----------------------
 existing_weeks = c.execute("SELECT week FROM weeks").fetchall()
-
 if not existing_weeks:
     for w in all_weeks:
-        c.execute("INSERT INTO weeks (week, enabled) VALUES (?, ?)", (w, 1))
+        c.execute("INSERT INTO weeks VALUES (?, ?)", (w, 1))
     conn.commit()
 
 # -----------------------
-# GET ACTIVE WEEKS
+# ACTIVE WEEKS
 # -----------------------
 weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
 active_weeks = weeks_df[weeks_df["enabled"] == 1]["week"].tolist()
 
 # -----------------------
-# EMPLOYEE LOGIN
+# LOGIN
 # -----------------------
 st.title("Vacation Scheduler")
 
@@ -102,7 +101,6 @@ if login_id and login_last:
         (df["employee_id"] == login_id) &
         (df["last_name"].str.lower() == login_last.lower())
     ]
-
     if not match.empty:
         employee = match.iloc[0]
         st.success(f"Welcome {employee['first_name']}")
@@ -122,7 +120,7 @@ if employee is not None:
     ).fetchone()
 
     if existing:
-        st.warning("You have already submitted your selections.")
+        st.warning("Already submitted")
     else:
         choices = []
         for i in range(1, 11):
@@ -155,30 +153,20 @@ if is_admin:
 
     st.success("Admin Access Granted")
 
-    # -----------------------
-    # EDIT WEEKS
-    # -----------------------
+    # MANAGE WEEKS
     st.subheader("Manage Weeks")
 
     weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
-
     edited_weeks = st.data_editor(weeks_df)
 
     if st.button("Save Week Changes"):
         c.execute("DELETE FROM weeks")
-
         for _, row in edited_weeks.iterrows():
-            c.execute(
-                "INSERT INTO weeks (week, enabled) VALUES (?, ?)",
-                (row["week"], int(row["enabled"]))
-            )
-
+            c.execute("INSERT INTO weeks VALUES (?, ?)", (row["week"], int(row["enabled"])))
         conn.commit()
         st.success("Weeks updated")
 
-    # -----------------------
     # RUN LOTTERY
-    # -----------------------
     st.subheader("Run Lottery")
 
     if st.button("Run Lottery"):
@@ -213,7 +201,7 @@ if is_admin:
 
         for emp_id, week in winners:
             c.execute(
-                "INSERT INTO results (employee_id, assigned_week) VALUES (?, ?)",
+                "INSERT INTO results VALUES (?, ?)",
                 (emp_id, week)
             )
 
@@ -221,18 +209,19 @@ if is_admin:
         st.success("Lottery Complete")
 
     # -----------------------
-    # RESULTS + DOWNLOAD
+    # RESULTS WITH NAMES
     # -----------------------
     st.subheader("Results")
 
     results_df = pd.read_sql_query("SELECT * FROM results", conn)
-    st.write(results_df)
 
-    csv = results_df.to_csv(index=False).encode("utf-8")
-
-    st.download_button(
-        "Download Results",
-        csv,
-        "vacation_results.csv",
-        "text/csv"
+    # JOIN WITH EMPLOYEES
+    results_df = results_df.merge(
+        df[["employee_id", "first_name", "last_name"]],
+        on="employee_id",
+        how="left"
     )
+
+    # REORDER
+    results_df = results_df[
+        ["employee_id", "first_name", "last_name
