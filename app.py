@@ -237,7 +237,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.write(view[["first_name", "last_name"]].sort_values(by="last_name"))
 
-    # FULL SUBMISSION DETAILS
+    # SUBMISSION DETAILS
     st.subheader("Submission Details")
 
     subs_full = pd.read_sql_query("SELECT * FROM submissions", conn)
@@ -249,7 +249,12 @@ if st.session_state.logged_in and st.session_state.role == "admin":
     )
 
     def combine_choices(row):
-        return ", ".join([row[f"choice{i}"] for i in range(1, 11) if row[f"choice{i}"]])
+        vals = []
+        for i in range(1, 11):
+            col = f"choice{i}"
+            if col in row and pd.notna(row[col]) and row[col] != "":
+                vals.append(str(row[col]))
+        return ", ".join(vals)
 
     view_full["choices"] = view_full.apply(combine_choices, axis=1)
 
