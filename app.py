@@ -115,7 +115,6 @@ if not st.session_state.logged_in:
         if not emp.empty:
             emp = emp.iloc[0]
 
-            # FIRST TIME PASSWORD SET
             if not emp["password_hash"] or pd.isna(emp["password_hash"]):
                 new_pw = st.text_input("Create Password", type="password")
 
@@ -128,7 +127,6 @@ if not st.session_state.logged_in:
                     conn.commit()
                     st.success("Password set. Refresh and log in.")
 
-            # NORMAL LOGIN
             else:
                 pw = st.text_input("Password", type="password")
 
@@ -203,10 +201,23 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         c.execute("DELETE FROM results")
         conn.commit()
 
-    if st.button("Reset All Passwords"):
-        c.execute("UPDATE employees SET password_hash=NULL")
+    # RESET INDIVIDUAL PASSWORD
+    st.subheader("Reset Individual Password")
+
+    emp_list = get_employees()
+    emp_options = emp_list["employee_id"] + " - " + emp_list["first_name"] + " " + emp_list["last_name"]
+
+    selected = st.selectbox("Select Employee", emp_options)
+
+    if st.button("Reset Password"):
+        emp_id = selected.split(" - ")[0]
+
+        c.execute(
+            "UPDATE employees SET password_hash=NULL WHERE employee_id=?",
+            (emp_id,)
+        )
         conn.commit()
-        st.success("Passwords cleared")
+        st.success("Password reset")
 
     # ADD EMPLOYEE
     st.subheader("Add Employee")
@@ -238,7 +249,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
                     conn.commit()
                     st.success("Employee added")
                 except:
-                    st.error("Employee ID already exists")
+                    st.error("Employee ID exists")
 
     # EDIT EMPLOYEES
     st.subheader("Edit Employees")
