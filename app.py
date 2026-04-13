@@ -7,6 +7,7 @@ import datetime
 # DATABASE SETUP
 # -----------------------
 conn = sqlite3.connect("data.db", check_same_thread=False)
+conn.row_factory = sqlite3.Row  # safer reads
 c = conn.cursor()
 
 c.execute("""
@@ -36,10 +37,7 @@ CREATE TABLE IF NOT EXISTS results (
 # LOAD EMPLOYEES
 # -----------------------
 df = pd.read_csv("employees.csv")
-
-# FORCE employee_id to string
 df["employee_id"] = df["employee_id"].astype(str)
-
 df["full_name"] = df["first_name"] + " " + df["last_name"]
 
 # -----------------------
@@ -94,7 +92,7 @@ else:
             st.success("Submitted")
 
 # -----------------------
-# RUN ALLOCATION
+# RUN ALLOCATION (NO PANDAS MERGE)
 # -----------------------
 st.header("Admin: Run Allocation")
 
@@ -104,20 +102,28 @@ if st.button("Run Lottery"):
     employees = pd.read_csv("employees.csv")
     employees["employee_id"] = employees["employee_id"].astype(str)
 
-    subs = pd.read_sql_query("SELECT * FROM submissions", conn)
-    subs["employee_id"] = subs["employee_id"].astype(str)
+    # Pull submissions manually (no pandas conversion issues)
+    subs_rows = c.execute("SELECT * FROM submissions").fetchall()
 
-    merged = pd.merge(employees, subs, on="employee_id")
+    # Convert to dict keyed by employee_id
+    subs_dict = {row["employee_id"]: row for row in subs_rows}
 
-    merged = merged.sort_values(by=["win_count", "hire_date"])
+    # Filter only employees who submitted
+    employees = employees[employees["employee_id"].isin(subs_dict.keys())]
+
+    # Sort properly
+    employees = employees.sort_values(by=["win_count", "hire_date"])
 
     taken_weeks = set()
 
-    for _, row in merged.iterrows():
+    for _, emp in employees.iterrows():
+        emp_id = emp["employee_id"]
+        sub = subs_dict[emp_id]
+
         assigned = None
 
         for i in range(1, 11):
-            choice = row[f"choice{i}"]
+            choice = sub[f"choice{i}"]
             if choice and choice not in taken_weeks:
                 assigned = choice
                 taken_weeks.add(choice)
@@ -126,7 +132,7 @@ if st.button("Run Lottery"):
         if assigned:
             c.execute(
                 "INSERT INTO results (employee_id, assigned_week) VALUES (?, ?)",
-                (row["employee_id"], assigned)
+                (emp_id, assigned)
             )
 
     conn.commit()
@@ -137,4 +143,4 @@ if st.button("Run Lottery"):
 # -----------------------
 st.header("Results")
 results = c.execute("SELECT * FROM results").fetchall()
-st.write(results)
+st.write([dict(r) for r in results])
