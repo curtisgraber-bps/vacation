@@ -92,7 +92,7 @@ else:
             st.success("Submitted")
 
 # -----------------------
-# RUN ALLOCATION + UPDATE WINS
+# RUN ALLOCATION
 # -----------------------
 st.header("Admin: Run Allocation")
 
@@ -133,20 +133,49 @@ if st.button("Run Lottery"):
 
     conn.commit()
 
-    # -----------------------
-    # UPDATE WIN COUNTS
-    # -----------------------
+    # update win counts
     for emp_id in winners:
         df.loc[df["employee_id"] == emp_id, "win_count"] += 1
 
-    # Save updated employee file
     df.drop(columns=["full_name"]).to_csv("employees.csv", index=False)
 
-    st.success("Lottery Complete + Win Counts Updated")
+    st.success("Lottery Complete")
+
+# -----------------------
+# ADMIN: EDIT EMPLOYEES
+# -----------------------
+st.header("Admin: Edit Employees")
+
+edit_df = st.data_editor(df, num_rows="dynamic")
+
+if st.button("Save Employee Changes"):
+    edit_df.drop(columns=["full_name"]).to_csv("employees.csv", index=False)
+    st.success("Employee data updated")
+
+# -----------------------
+# ADMIN: EDIT RESULTS
+# -----------------------
+st.header("Admin: Edit Results")
+
+results_df = pd.read_sql_query("SELECT * FROM results", conn)
+
+edited_results = st.data_editor(results_df, num_rows="dynamic")
+
+if st.button("Save Result Changes"):
+    c.execute("DELETE FROM results")
+
+    for _, row in edited_results.iterrows():
+        c.execute(
+            "INSERT INTO results (employee_id, assigned_week) VALUES (?, ?)",
+            (row["employee_id"], row["assigned_week"])
+        )
+
+    conn.commit()
+    st.success("Results updated")
 
 # -----------------------
 # VIEW RESULTS
 # -----------------------
-st.header("Results")
-results = c.execute("SELECT * FROM results").fetchall()
-st.write([dict(r) for r in results])
+st.header("Final Results")
+final = c.execute("SELECT * FROM results").fetchall()
+st.write([dict(r) for r in final])
