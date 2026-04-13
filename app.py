@@ -155,19 +155,30 @@ if is_admin:
     st.success("Admin Access Granted")
 
     # -----------------------
-    # RESET CONTROLS
+    # RESET
     # -----------------------
-    st.subheader("Reset Data (Testing Only)")
+    st.subheader("Reset Data")
 
-    if st.button("Clear All Submissions"):
+    if st.button("Clear Submissions"):
         c.execute("DELETE FROM submissions")
         conn.commit()
-        st.success("All submissions cleared")
+        st.success("Submissions cleared")
 
     if st.button("Clear Results"):
         c.execute("DELETE FROM results")
         conn.commit()
         st.success("Results cleared")
+
+    # -----------------------
+    # EDIT EMPLOYEES (WIN COUNT)
+    # -----------------------
+    st.subheader("Edit Employees (Win Counts, etc)")
+
+    edit_df = st.data_editor(df)
+
+    if st.button("Save Employee Changes"):
+        edit_df.to_csv("employees.csv", index=False)
+        st.success("Employee data updated")
 
     # -----------------------
     # MANAGE WEEKS
@@ -229,10 +240,19 @@ if is_admin:
             )
 
         conn.commit()
-        st.success("Lottery Complete")
+
+        # -----------------------
+        # AUTO UPDATE WIN COUNT
+        # -----------------------
+        for emp_id, _ in winners:
+            df.loc[df["employee_id"] == emp_id, "win_count"] += 1
+
+        df.to_csv("employees.csv", index=False)
+
+        st.success("Lottery Complete + Win Counts Updated")
 
     # -----------------------
-    # RESULTS + EXPORT
+    # RESULTS
     # -----------------------
     st.subheader("Results")
 
@@ -253,10 +273,10 @@ if is_admin:
     csv = results_df.to_csv(index=False).encode("utf-8")
 
     st.download_button(
-        "Download Results CSV",
-        data=csv,
-        file_name="vacation_results.csv",
-        mime="text/csv"
+        "Download Results",
+        csv,
+        "vacation_results.csv",
+        "text/csv"
     )
 
 else:
