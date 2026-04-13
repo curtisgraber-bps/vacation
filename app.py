@@ -58,14 +58,14 @@ CREATE TABLE IF NOT EXISTS weeks (
 if c.execute("SELECT COUNT(*) FROM employees").fetchone()[0] == 0:
     df = pd.read_csv("employees.csv")
 
-    df["employee_id"] = df["employee_id"].astype(str)
+    df["employee_id"] = df["employee_id"].astype(str).str.strip()
     df["win_count"] = pd.to_numeric(df["win_count"], errors="coerce").fillna(0).astype(int)
 
     for _, row in df.iterrows():
         c.execute(
             "INSERT INTO employees VALUES (?, ?, ?, ?, ?)",
             (
-                str(row["employee_id"]),
+                row["employee_id"],
                 row["first_name"],
                 row["last_name"],
                 row["hire_date"],
@@ -79,7 +79,7 @@ if c.execute("SELECT COUNT(*) FROM employees").fetchone()[0] == 0:
 # -----------------------
 def get_employees():
     df = pd.read_sql_query("SELECT * FROM employees", conn)
-    df["employee_id"] = df["employee_id"].astype(str)
+    df["employee_id"] = df["employee_id"].astype(str).str.strip()
     df["win_count"] = pd.to_numeric(df["win_count"], errors="coerce").fillna(0).astype(int)
     df["hire_date"] = pd.to_datetime(df["hire_date"], errors="coerce")
     return df
@@ -96,7 +96,6 @@ def generate_weeks(year=2027):
         e = s + datetime.timedelta(days=7)
         weeks.append(f"{s} to {e}")
     return weeks
-
 
 # -----------------------
 # INIT WEEKS
@@ -122,8 +121,10 @@ employee = None
 employees_df = get_employees()
 
 if login_id and login_last:
+    login_id = str(login_id).strip()
+
     match = employees_df[
-        (employees_df["employee_id"] == str(login_id))
+        (employees_df["employee_id"] == login_id)
         & (employees_df["last_name"].str.lower() == login_last.lower())
     ]
 
@@ -137,7 +138,7 @@ if login_id and login_last:
 # SUBMISSION
 # -----------------------
 if employee is not None:
-    employee_id = str(employee["employee_id"])
+    employee_id = str(employee["employee_id"]).strip()
 
     existing = c.execute(
         "SELECT 1 FROM submissions WHERE employee_id = ?", (employee_id,)
@@ -170,6 +171,13 @@ admin = st.text_input("Admin Password", type="password") == ADMIN_PASSWORD
 if admin:
     st.success("Admin Access")
 
+    # HARD CLEAN (fix old bad data)
+    if st.button("Normalize IDs (one-time fix)"):
+        c.execute("UPDATE employees SET employee_id = TRIM(employee_id)")
+        c.execute("UPDATE submissions SET employee_id = TRIM(employee_id)")
+        conn.commit()
+        st.success("IDs normalized")
+
     if st.button("Clear Submissions"):
         c.execute("DELETE FROM submissions")
         conn.commit()
@@ -184,11 +192,8 @@ if admin:
     edit_df = st.data_editor(get_employees())
 
     if st.button("Save Employee Changes"):
-        edit_df["win_count"] = (
-            pd.to_numeric(edit_df["win_count"], errors="coerce")
-            .fillna(0)
-            .astype(int)
-        )
+        edit_df["employee_id"] = edit_df["employee_id"].astype(str).str.strip()
+        edit_df["win_count"] = pd.to_numeric(edit_df["win_count"], errors="coerce").fillna(0).astype(int)
 
         c.execute("DELETE FROM employees")
 
@@ -196,7 +201,7 @@ if admin:
             c.execute(
                 "INSERT INTO employees VALUES (?, ?, ?, ?, ?)",
                 (
-                    str(row["employee_id"]),
+                    row["employee_id"],
                     row["first_name"],
                     row["last_name"],
                     str(row["hire_date"]),
@@ -226,7 +231,7 @@ if admin:
         employees = get_employees()
 
         subs_rows = c.execute("SELECT * FROM submissions").fetchall()
-        subs_dict = {str(row["employee_id"]): row for row in subs_rows}
+        subs_dict = {str(row["employee_id"]).strip(): row for row in subs_rows}
 
         employees = employees[employees["employee_id"].isin(subs_dict.keys())]
         employees = employees.sort_values(by=["win_count", "hire_date"])
@@ -234,7 +239,7 @@ if admin:
         taken = set()
 
         for _, emp in employees.iterrows():
-            emp_id = str(emp["employee_id"])
+            emp_id = str(emp["employee_id"]).strip()
             sub = subs_dict[emp_id]
 
             for i in range(1, 11):
