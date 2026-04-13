@@ -43,7 +43,6 @@ CREATE TABLE IF NOT EXISTS results (
 # -----------------------
 df = pd.read_csv("employees.csv")
 df["employee_id"] = df["employee_id"].astype(str)
-df["full_name"] = df["first_name"] + " " + df["last_name"]
 
 # -----------------------
 # GENERATE WEEKS
@@ -64,37 +63,58 @@ def generate_weeks(year=2027):
 weeks = generate_weeks()
 
 # -----------------------
-# UI - SUBMISSIONS
+# EMPLOYEE LOGIN
 # -----------------------
 st.title("Vacation Scheduler")
 
-st.header("Submit Your Choices")
+st.header("Employee Login")
 
-selected = st.selectbox("Select Your Name", df["full_name"])
-employee_id = df[df["full_name"] == selected]["employee_id"].values[0]
+login_id = st.text_input("Employee ID")
+login_last = st.text_input("Last Name")
 
-existing = c.execute(
-    "SELECT 1 FROM submissions WHERE employee_id = ?",
-    (employee_id,)
-).fetchone()
+employee = None
 
-if existing:
-    st.warning("Already submitted")
-else:
-    choices = []
-    for i in range(1, 11):
-        choice = st.selectbox(f"Choice {i}", [""] + weeks, key=f"choice_{i}")
-        choices.append(choice)
+if login_id and login_last:
+    match = df[
+        (df["employee_id"] == login_id) &
+        (df["last_name"].str.lower() == login_last.lower())
+    ]
 
-    if st.button("Submit"):
-        if all(not c for c in choices):
-            st.error("Select at least one week")
-        else:
-            c.execute("""
-                INSERT INTO submissions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (employee_id, *choices))
-            conn.commit()
-            st.success("Submitted")
+    if not match.empty:
+        employee = match.iloc[0]
+        st.success(f"Welcome {employee['first_name']}")
+    else:
+        st.error("Invalid login")
+
+# -----------------------
+# SUBMISSION UI (ONLY IF LOGGED IN)
+# -----------------------
+if employee is not None:
+
+    employee_id = employee["employee_id"]
+
+    existing = c.execute(
+        "SELECT 1 FROM submissions WHERE employee_id = ?",
+        (employee_id,)
+    ).fetchone()
+
+    if existing:
+        st.warning("You have already submitted your selections.")
+    else:
+        choices = []
+        for i in range(1, 11):
+            choice = st.selectbox(f"Choice {i}", [""] + weeks, key=f"choice_{i}")
+            choices.append(choice)
+
+        if st.button("Submit"):
+            if all(not c for c in choices):
+                st.error("Select at least one week")
+            else:
+                c.execute("""
+                    INSERT INTO submissions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (employee_id, *choices))
+                conn.commit()
+                st.success("Submitted")
 
 # -----------------------
 # ADMIN LOGIN
@@ -102,19 +122,15 @@ else:
 st.header("Admin Login")
 
 admin_input = st.text_input("Enter Admin Password", type="password")
-
 is_admin = admin_input == ADMIN_PASSWORD
 
 # -----------------------
-# ADMIN SECTION (LOCKED)
+# ADMIN SECTION
 # -----------------------
 if is_admin:
 
     st.success("Admin Access Granted")
 
-    # -----------------------
-    # RUN ALLOCATION
-    # -----------------------
     st.subheader("Run Allocation")
 
     if st.button("Run Lottery"):
@@ -154,51 +170,16 @@ if is_admin:
 
         conn.commit()
 
-        # update win counts
         for emp_id in winners:
             df.loc[df["employee_id"] == emp_id, "win_count"] += 1
 
-        df.drop(columns=["full_name"]).to_csv("employees.csv", index=False)
+        df.to_csv("employees.csv", index=False)
 
         st.success("Lottery Complete")
 
-    # -----------------------
-    # EDIT EMPLOYEES
-    # -----------------------
-    st.subheader("Edit Employees")
-
-    edit_df = st.data_editor(df, num_rows="dynamic")
-
-    if st.button("Save Employee Changes"):
-        edit_df.drop(columns=["full_name"]).to_csv("employees.csv", index=False)
-        st.success("Employee data updated")
-
-    # -----------------------
-    # EDIT RESULTS
-    # -----------------------
-    st.subheader("Edit Results")
-
-    results_df = pd.read_sql_query("SELECT * FROM results", conn)
-    edited_results = st.data_editor(results_df, num_rows="dynamic")
-
-    if st.button("Save Result Changes"):
-        c.execute("DELETE FROM results")
-
-        for _, row in edited_results.iterrows():
-            c.execute(
-                "INSERT INTO results (employee_id, assigned_week) VALUES (?, ?)",
-                (row["employee_id"], row["assigned_week"])
-            )
-
-        conn.commit()
-        st.success("Results updated")
-
-    # -----------------------
-    # VIEW RESULTS
-    # -----------------------
-    st.subheader("Final Results")
-    final = c.execute("SELECT * FROM results").fetchall()
-    st.write([dict(r) for r in final])
+    st.subheader("Results")
+    results = c.execute("SELECT * FROM results").fetchall()
+    st.write([dict(r) for r in results])
 
 else:
     st.info("Enter admin password to access admin controls")
