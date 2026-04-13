@@ -3,8 +3,14 @@ import pandas as pd
 import sqlite3
 import datetime
 
+# -----------------------
+# CONFIG
+# -----------------------
 ADMIN_PASSWORD = "admin123"
 
+# -----------------------
+# DATABASE
+# -----------------------
 conn = sqlite3.connect("data.db", check_same_thread=False)
 conn.row_factory = sqlite3.Row
 c = conn.cursor()
@@ -53,23 +59,20 @@ CREATE TABLE IF NOT EXISTS weeks (
 """)
 
 # -----------------------
-# LOAD CSV INTO DB (ONCE)
+# INITIAL LOAD FROM CSV (ONCE)
 # -----------------------
 if c.execute("SELECT COUNT(*) FROM employees").fetchone()[0] == 0:
     df = pd.read_csv("employees.csv")
     df["employee_id"] = df["employee_id"].astype(str)
 
     for _, row in df.iterrows():
-        c.execute("""
-            INSERT INTO employees VALUES (?, ?, ?, ?, ?)
-        """, (
+        c.execute("INSERT INTO employees VALUES (?, ?, ?, ?, ?)", (
             row["employee_id"],
             row["first_name"],
             row["last_name"],
             row["hire_date"],
             row["win_count"]
         ))
-
     conn.commit()
 
 # -----------------------
@@ -92,10 +95,11 @@ def generate_weeks(year=2027):
         weeks.append(f"{s} to {e}")
     return weeks
 
-all_weeks = generate_weeks()
-
+# -----------------------
+# INIT WEEKS
+# -----------------------
 if c.execute("SELECT COUNT(*) FROM weeks").fetchone()[0] == 0:
-    for w in all_weeks:
+    for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (?, ?)", (w, 1))
     conn.commit()
 
@@ -126,7 +130,7 @@ if login_id and login_last:
         st.error("Invalid login")
 
 # -----------------------
-# SUBMIT
+# SUBMISSION
 # -----------------------
 if employee is not None:
 
@@ -157,13 +161,54 @@ if employee is not None:
                 st.success("Submitted")
 
 # -----------------------
-# ADMIN
+# ADMIN LOGIN
 # -----------------------
 admin = st.text_input("Admin Password", type="password") == ADMIN_PASSWORD
 
+# -----------------------
+# ADMIN PANEL
+# -----------------------
 if admin:
 
-    st.success("Admin")
+    st.success("Admin Access")
+
+    # RESET
+    st.subheader("Reset Data")
+    if st.button("Clear Submissions"):
+        c.execute("DELETE FROM submissions")
+        conn.commit()
+        st.success("Submissions cleared")
+
+    if st.button("Clear Results"):
+        c.execute("DELETE FROM results")
+        conn.commit()
+        st.success("Results cleared")
+
+    # EDIT EMPLOYEES
+    st.subheader("Edit Employees")
+    edit_df = st.data_editor(employees_df)
+
+    if st.button("Save Employee Changes"):
+        c.execute("DELETE FROM employees")
+        for _, row in edit_df.iterrows():
+            c.execute("INSERT INTO employees VALUES (?, ?, ?, ?, ?)", tuple(row))
+        conn.commit()
+        st.success("Employees updated")
+
+    # MANAGE WEEKS
+    st.subheader("Manage Weeks")
+    weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
+    edited_weeks = st.data_editor(weeks_df)
+
+    if st.button("Save Weeks"):
+        c.execute("DELETE FROM weeks")
+        for _, row in edited_weeks.iterrows():
+            c.execute("INSERT INTO weeks VALUES (?, ?)", tuple(row))
+        conn.commit()
+        st.success("Weeks updated")
+
+    # RUN LOTTERY
+    st.subheader("Run Lottery")
 
     if st.button("Run Lottery"):
         c.execute("DELETE FROM results")
@@ -177,7 +222,6 @@ if admin:
         employees = employees.sort_values(by=["win_count", "hire_date"])
 
         taken = set()
-        winners = []
 
         for _, emp in employees.iterrows():
             emp_id = emp["employee_id"]
@@ -187,20 +231,39 @@ if admin:
                 choice = sub[f"choice{i}"]
                 if choice and choice not in taken:
                     taken.add(choice)
-                    winners.append((emp_id, choice))
+
+                    c.execute(
+                        "INSERT INTO results VALUES (?, ?)",
+                        (emp_id, choice)
+                    )
+
+                    # UPDATE WIN COUNT
+                    c.execute(
+                        "UPDATE employees SET win_count = win_count + 1 WHERE employee_id = ?",
+                        (emp_id,)
+                    )
                     break
 
-        for emp_id, week in winners:
-            c.execute("INSERT INTO results VALUES (?, ?)", (emp_id, week))
-
-            # UPDATE WIN COUNT IN DB
-            c.execute(
-                "UPDATE employees SET win_count = win_count + 1 WHERE employee_id = ?",
-                (emp_id,)
-            )
-
         conn.commit()
-        st.success("Lottery Complete + Persisted")
+        st.success("Lottery Complete")
 
-    results = pd.read_sql_query("SELECT * FROM results", conn)
-    st.write(results)
+    # RESULTS
+    st.subheader("Results")
+
+    results_df = pd.read_sql_query("SELECT * FROM results", conn)
+    results_df = results_df.merge(
+        employees_df[["employee_id", "first_name", "last_name"]],
+        on="employee_id",
+        how="left"
+    )
+
+    st.write(results_df)
+
+    csv = results_df.to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+        "Download Results",
+        csv,
+        "results.csv",
+        "text/csv"
+    )
