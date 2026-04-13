@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import datetime
+import bcrypt
 
 ADMIN_PASSWORD = "admin123"
 
@@ -18,7 +19,8 @@ CREATE TABLE IF NOT EXISTS employees (
     first_name TEXT,
     last_name TEXT,
     hire_date TEXT,
-    win_count INTEGER
+    win_count INTEGER,
+    password_hash TEXT
 )
 """)
 
@@ -61,7 +63,10 @@ if c.execute("SELECT COUNT(*) FROM employees").fetchone()[0] == 0:
     df["win_count"] = pd.to_numeric(df["win_count"], errors="coerce").fillna(0).astype(int)
 
     for _, row in df.iterrows():
-        c.execute("INSERT INTO employees VALUES (?, ?, ?, ?, ?)", tuple(row))
+        c.execute(
+            "INSERT INTO employees (employee_id, first_name, last_name, hire_date, win_count) VALUES (?, ?, ?, ?, ?)",
+            tuple(row)
+        )
     conn.commit()
 
 # -----------------------
@@ -73,6 +78,12 @@ def get_employees():
     df["win_count"] = pd.to_numeric(df["win_count"], errors="coerce").fillna(0).astype(int)
     df["hire_date"] = pd.to_datetime(df["hire_date"], errors="coerce")
     return df
+
+def hash_pw(pw):
+    return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
+
+def check_pw(pw, hashed):
+    return bcrypt.checkpw(pw.encode(), hashed.encode())
 
 def generate_weeks():
     start = datetime.date(2027, 1, 1)
@@ -99,39 +110,49 @@ if "logged_in" not in st.session_state:
     st.session_state.user_id = None
 
 # -----------------------
-# LOGIN SCREEN
+# LOGIN
 # -----------------------
 if not st.session_state.logged_in:
 
     st.title("Login")
 
     login_id = st.text_input("Employee ID")
-    login_last = st.text_input("Last Name")
     admin_pass = st.text_input("Admin Password (optional)", type="password")
 
-    if st.button("Login"):
+    if admin_pass == ADMIN_PASSWORD and st.button("Login as Admin"):
+        st.session_state.logged_in = True
+        st.session_state.role = "admin"
+        st.rerun()
 
-        # ADMIN LOGIN
-        if admin_pass == ADMIN_PASSWORD:
-            st.session_state.logged_in = True
-            st.session_state.role = "admin"
-            st.rerun()
+    if login_id:
 
-        # USER LOGIN
         employees_df = get_employees()
+        emp = employees_df[employees_df["employee_id"] == str(login_id).strip()]
 
-        match = employees_df[
-            (employees_df["employee_id"] == str(login_id).strip()) &
-            (employees_df["last_name"].str.lower() == login_last.lower())
-        ]
+        if not emp.empty:
+            emp = emp.iloc[0]
 
-        if not match.empty:
-            st.session_state.logged_in = True
-            st.session_state.role = "user"
-            st.session_state.user_id = str(login_id).strip()
-            st.rerun()
-        else:
-            st.error("Invalid login")
+            if not emp["password_hash"]:
+                new_pw = st.text_input("Create Password", type="password")
+                if st.button("Set Password"):
+                    h = hash_pw(new_pw)
+                    c.execute(
+                        "UPDATE employees SET password_hash=? WHERE employee_id=?",
+                        (h, str(login_id).strip())
+                    )
+                    conn.commit()
+                    st.success("Password set. Refresh and log in.")
+
+            else:
+                pw = st.text_input("Password", type="password")
+                if st.button("Login"):
+                    if check_pw(pw, emp["password_hash"]):
+                        st.session_state.logged_in = True
+                        st.session_state.role = "user"
+                        st.session_state.user_id = str(login_id).strip()
+                        st.rerun()
+                    else:
+                        st.error("Invalid password")
 
 # -----------------------
 # LOGOUT
@@ -142,7 +163,7 @@ if st.session_state.logged_in:
         st.rerun()
 
 # -----------------------
-# EMPLOYEE VIEW
+# USER VIEW
 # -----------------------
 if st.session_state.logged_in and st.session_state.role == "user":
 
@@ -155,7 +176,7 @@ if st.session_state.logged_in and st.session_state.role == "user":
     ).fetchone()
 
     if existing:
-        st.warning("You have already submitted your choices.")
+        st.warning("Already submitted")
     else:
         choices = [st.selectbox(f"Choice {i}", [""] + active_weeks, key=f"c{i}") for i in range(1, 11)]
 
@@ -175,18 +196,20 @@ if st.session_state.logged_in and st.session_state.role == "user":
 # -----------------------
 if st.session_state.logged_in and st.session_state.role == "admin":
 
-
     st.title("Admin Panel")
 
     if st.button("Clear Submissions"):
         c.execute("DELETE FROM submissions")
         conn.commit()
-        st.success("Submissions cleared")
 
     if st.button("Clear Results"):
         c.execute("DELETE FROM results")
         conn.commit()
-        st.success("Results cleared")
+
+    if st.button("Reset All Passwords"):
+        c.execute("UPDATE employees SET password_hash=NULL")
+        conn.commit()
+        st.success("All passwords cleared")
 
     st.subheader("Edit Employees")
     edit_df = st.data_editor(get_employees())
@@ -198,27 +221,20 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         c.execute("DELETE FROM employees")
 
         for _, row in edit_df.iterrows():
-            c.execute("INSERT INTO employees VALUES (?, ?, ?, ?, ?)", (
-                row["employee_id"],
-                row["first_name"],
-                row["last_name"],
-                str(row["hire_date"]),
-                int(row["win_count"]),
-            ))
+            c.execute(
+                "INSERT INTO employees VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    row["employee_id"],
+                    row["first_name"],
+                    row["last_name"],
+                    str(row["hire_date"]),
+                    int(row["win_count"]),
+                    row["password_hash"]
+                )
+            )
 
         conn.commit()
         st.success("Employees updated")
-
-    st.subheader("Manage Weeks")
-    weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
-    edited_weeks = st.data_editor(weeks_df)
-
-    if st.button("Save Weeks"):
-        c.execute("DELETE FROM weeks")
-        for _, row in edited_weeks.iterrows():
-            c.execute("INSERT INTO weeks VALUES (?, ?)", tuple(row))
-        conn.commit()
-        st.success("Weeks updated")
 
     st.subheader("Run Lottery")
 
@@ -264,5 +280,4 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         how="left"
     )
 
-    st.subheader("Results")
     st.write(results_df)
