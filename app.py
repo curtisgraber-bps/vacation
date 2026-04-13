@@ -4,6 +4,11 @@ import sqlite3
 import datetime
 
 # -----------------------
+# CONFIG
+# -----------------------
+ADMIN_PASSWORD = "admin123"  # change this
+
+# -----------------------
 # DATABASE SETUP
 # -----------------------
 conn = sqlite3.connect("data.db", check_same_thread=False)
@@ -92,90 +97,108 @@ else:
             st.success("Submitted")
 
 # -----------------------
-# RUN ALLOCATION
+# ADMIN LOGIN
 # -----------------------
-st.header("Admin: Run Allocation")
+st.header("Admin Login")
 
-if st.button("Run Lottery"):
-    c.execute("DELETE FROM results")
+admin_input = st.text_input("Enter Admin Password", type="password")
 
-    employees = pd.read_csv("employees.csv")
-    employees["employee_id"] = employees["employee_id"].astype(str)
+is_admin = admin_input == ADMIN_PASSWORD
 
-    subs_rows = c.execute("SELECT * FROM submissions").fetchall()
-    subs_dict = {row["employee_id"]: row for row in subs_rows}
+# -----------------------
+# ADMIN SECTION (LOCKED)
+# -----------------------
+if is_admin:
 
-    employees = employees[employees["employee_id"].isin(subs_dict.keys())]
-    employees = employees.sort_values(by=["win_count", "hire_date"])
+    st.success("Admin Access Granted")
 
-    taken_weeks = set()
-    winners = []
+    # -----------------------
+    # RUN ALLOCATION
+    # -----------------------
+    st.subheader("Run Allocation")
 
-    for _, emp in employees.iterrows():
-        emp_id = emp["employee_id"]
-        sub = subs_dict[emp_id]
+    if st.button("Run Lottery"):
+        c.execute("DELETE FROM results")
 
-        assigned = None
+        employees = pd.read_csv("employees.csv")
+        employees["employee_id"] = employees["employee_id"].astype(str)
 
-        for i in range(1, 11):
-            choice = sub[f"choice{i}"]
-            if choice and choice not in taken_weeks:
-                assigned = choice
-                taken_weeks.add(choice)
-                break
+        subs_rows = c.execute("SELECT * FROM submissions").fetchall()
+        subs_dict = {row["employee_id"]: row for row in subs_rows}
 
-        if assigned:
-            winners.append(emp_id)
+        employees = employees[employees["employee_id"].isin(subs_dict.keys())]
+        employees = employees.sort_values(by=["win_count", "hire_date"])
+
+        taken_weeks = set()
+        winners = []
+
+        for _, emp in employees.iterrows():
+            emp_id = emp["employee_id"]
+            sub = subs_dict[emp_id]
+
+            assigned = None
+
+            for i in range(1, 11):
+                choice = sub[f"choice{i}"]
+                if choice and choice not in taken_weeks:
+                    assigned = choice
+                    taken_weeks.add(choice)
+                    break
+
+            if assigned:
+                winners.append(emp_id)
+                c.execute(
+                    "INSERT INTO results (employee_id, assigned_week) VALUES (?, ?)",
+                    (emp_id, assigned)
+                )
+
+        conn.commit()
+
+        # update win counts
+        for emp_id in winners:
+            df.loc[df["employee_id"] == emp_id, "win_count"] += 1
+
+        df.drop(columns=["full_name"]).to_csv("employees.csv", index=False)
+
+        st.success("Lottery Complete")
+
+    # -----------------------
+    # EDIT EMPLOYEES
+    # -----------------------
+    st.subheader("Edit Employees")
+
+    edit_df = st.data_editor(df, num_rows="dynamic")
+
+    if st.button("Save Employee Changes"):
+        edit_df.drop(columns=["full_name"]).to_csv("employees.csv", index=False)
+        st.success("Employee data updated")
+
+    # -----------------------
+    # EDIT RESULTS
+    # -----------------------
+    st.subheader("Edit Results")
+
+    results_df = pd.read_sql_query("SELECT * FROM results", conn)
+    edited_results = st.data_editor(results_df, num_rows="dynamic")
+
+    if st.button("Save Result Changes"):
+        c.execute("DELETE FROM results")
+
+        for _, row in edited_results.iterrows():
             c.execute(
                 "INSERT INTO results (employee_id, assigned_week) VALUES (?, ?)",
-                (emp_id, assigned)
+                (row["employee_id"], row["assigned_week"])
             )
 
-    conn.commit()
+        conn.commit()
+        st.success("Results updated")
 
-    # update win counts
-    for emp_id in winners:
-        df.loc[df["employee_id"] == emp_id, "win_count"] += 1
+    # -----------------------
+    # VIEW RESULTS
+    # -----------------------
+    st.subheader("Final Results")
+    final = c.execute("SELECT * FROM results").fetchall()
+    st.write([dict(r) for r in final])
 
-    df.drop(columns=["full_name"]).to_csv("employees.csv", index=False)
-
-    st.success("Lottery Complete")
-
-# -----------------------
-# ADMIN: EDIT EMPLOYEES
-# -----------------------
-st.header("Admin: Edit Employees")
-
-edit_df = st.data_editor(df, num_rows="dynamic")
-
-if st.button("Save Employee Changes"):
-    edit_df.drop(columns=["full_name"]).to_csv("employees.csv", index=False)
-    st.success("Employee data updated")
-
-# -----------------------
-# ADMIN: EDIT RESULTS
-# -----------------------
-st.header("Admin: Edit Results")
-
-results_df = pd.read_sql_query("SELECT * FROM results", conn)
-
-edited_results = st.data_editor(results_df, num_rows="dynamic")
-
-if st.button("Save Result Changes"):
-    c.execute("DELETE FROM results")
-
-    for _, row in edited_results.iterrows():
-        c.execute(
-            "INSERT INTO results (employee_id, assigned_week) VALUES (?, ?)",
-            (row["employee_id"], row["assigned_week"])
-        )
-
-    conn.commit()
-    st.success("Results updated")
-
-# -----------------------
-# VIEW RESULTS
-# -----------------------
-st.header("Final Results")
-final = c.execute("SELECT * FROM results").fetchall()
-st.write([dict(r) for r in final])
+else:
+    st.info("Enter admin password to access admin controls")
