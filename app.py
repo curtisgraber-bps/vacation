@@ -104,52 +104,55 @@ if not st.session_state.logged_in:
 
     st.title("Login")
 
+    login_id = st.text_input("Employee ID")
+
+    if login_id:
+        employees_df = get_employees()
+        emp = employees_df[employees_df["employee_id"] == str(login_id).strip()]
+
+        if not emp.empty:
+            emp = emp.iloc[0]
+
+            if not emp["password_hash"]:
+                new_pw = st.text_input("Create Password", type="password")
+
+                if st.button("Set Password"):
+                    h = hash_pw(new_pw)
+                    c.execute(
+                        "UPDATE employees SET password_hash=? WHERE employee_id=?",
+                        (h, str(login_id).strip())
+                    )
+                    conn.commit()
+                    st.success("Password set. Refresh and log in.")
+
+            else:
+                pw = st.text_input("Password", type="password")
+
+                if st.button("Login"):
+                    if check_pw(pw, emp["password_hash"]):
+                        st.session_state.logged_in = True
+                        st.session_state.role = "user"
+                        st.session_state.user_id = str(login_id).strip()
+                        st.rerun()
+                    else:
+                        st.error("Invalid password")
+
+    # spacing before admin
+    st.markdown("---")
+    st.markdown(" ")
+
     is_admin = st.checkbox("Admin login")
 
     if is_admin:
         admin_pw = st.text_input("Admin Password", type="password")
 
-        if st.button("Login"):
+        if st.button("Admin Login"):
             if admin_pw == ADMIN_PASSWORD:
                 st.session_state.logged_in = True
                 st.session_state.role = "admin"
                 st.rerun()
             else:
                 st.error("Invalid admin password")
-
-    else:
-        login_id = st.text_input("Employee ID")
-
-        if login_id:
-            employees_df = get_employees()
-            emp = employees_df[employees_df["employee_id"] == str(login_id).strip()]
-
-            if not emp.empty:
-                emp = emp.iloc[0]
-
-                if not emp["password_hash"]:
-                    new_pw = st.text_input("Create Password", type="password")
-
-                    if st.button("Set Password"):
-                        h = hash_pw(new_pw)
-                        c.execute(
-                            "UPDATE employees SET password_hash=? WHERE employee_id=?",
-                            (h, str(login_id).strip())
-                        )
-                        conn.commit()
-                        st.success("Password set. Refresh and log in.")
-
-                else:
-                    pw = st.text_input("Password", type="password")
-
-                    if st.button("Login"):
-                        if check_pw(pw, emp["password_hash"]):
-                            st.session_state.logged_in = True
-                            st.session_state.role = "user"
-                            st.session_state.user_id = str(login_id).strip()
-                            st.rerun()
-                        else:
-                            st.error("Invalid password")
 
 # LOGOUT
 if st.session_state.logged_in:
