@@ -50,12 +50,10 @@ CREATE TABLE IF NOT EXISTS weeks (
 )
 """)
 
-# INITIAL LOAD FROM CSV (only if empty)
+# INITIAL LOAD FROM CSV (only once)
 if c.execute("SELECT COUNT(*) FROM employees").fetchone()[0] == 0:
     df = pd.read_csv("employees.csv")
     df["employee_id"] = df["employee_id"].astype(str)
-
-    # FIX: clean win_count
     df["win_count"] = pd.to_numeric(df["win_count"], errors="coerce").fillna(0).astype(int)
 
     for _, row in df.iterrows():
@@ -67,9 +65,6 @@ if c.execute("SELECT COUNT(*) FROM employees").fetchone()[0] == 0:
             int(row["win_count"])
         ))
     conn.commit()
-
-# LOAD EMPLOYEES
-employees_df = pd.read_sql_query("SELECT * FROM employees", conn)
 
 # GENERATE WEEKS
 def generate_weeks(year=2027):
@@ -90,9 +85,17 @@ if c.execute("SELECT COUNT(*) FROM weeks").fetchone()[0] == 0:
         c.execute("INSERT INTO weeks VALUES (?, ?)", (w, 1))
     conn.commit()
 
+# ACTIVE WEEKS
 active_weeks = pd.read_sql_query(
     "SELECT week FROM weeks WHERE enabled = 1", conn
 )["week"].tolist()
+
+# LOAD EMPLOYEES (always fresh)
+def get_employees():
+    df = pd.read_sql_query("SELECT * FROM employees", conn)
+    df["win_count"] = pd.to_numeric(df["win_count"], errors="coerce").fillna(0).astype(int)
+    df["hire_date"] = pd.to_datetime(df["hire_date"], errors="coerce")
+    return df
 
 # LOGIN
 st.title("Vacation Scheduler")
@@ -101,6 +104,7 @@ login_id = st.text_input("Employee ID")
 login_last = st.text_input("Last Name")
 
 employee = None
+employees_df = get_employees()
 
 if login_id and login_last:
     match = employees_df[
@@ -146,7 +150,6 @@ if employee is not None:
 # ADMIN LOGIN
 admin = st.text_input("Admin Password", type="password") == ADMIN_PASSWORD
 
-# ADMIN PANEL
 if admin:
 
     st.success("Admin Access")
@@ -162,13 +165,19 @@ if admin:
         st.success("Results cleared")
 
     st.subheader("Edit Employees")
-    edit_df = st.data_editor(employees_df)
+    edit_df = st.data_editor(get_employees())
 
     if st.button("Save Employee Changes"):
         edit_df["win_count"] = pd.to_numeric(edit_df["win_count"], errors="coerce").fillna(0).astype(int)
         c.execute("DELETE FROM employees")
         for _, row in edit_df.iterrows():
-            c.execute("INSERT INTO employees VALUES (?, ?, ?, ?, ?)", tuple(row))
+            c.execute("INSERT INTO employees VALUES (?, ?, ?, ?, ?)", (
+                str(row["employee_id"]),
+                row["first_name"],
+                row["last_name"],
+                str(row["hire_date"]),
+                int(row["win_count"])
+            ))
         conn.commit()
         st.success("Employees updated")
 
@@ -188,11 +197,7 @@ if admin:
     if st.button("Run Lottery"):
         c.execute("DELETE FROM results")
 
-        employees = pd.read_sql_query("SELECT * FROM employees", conn)
-
-        # FIX: clean + correct types
-        employees["win_count"] = pd.to_numeric(employees["win_count"], errors="coerce").fillna(0).astype(int)
-        employees["hire_date"] = pd.to_datetime(employees["hire_date"], errors="coerce")
+        employees = get_employees()
 
         subs_rows = c.execute("SELECT * FROM submissions").fetchall()
         subs_dict = {row["employee_id"]: row for row in subs_rows}
@@ -225,10 +230,12 @@ if admin:
         conn.commit()
         st.success("Lottery Complete")
 
+    # RESULTS (always fresh)
     results_df = pd.read_sql_query("SELECT * FROM results", conn)
+    fresh_employees = get_employees()
 
     results_df = results_df.merge(
-        employees_df[["employee_id", "first_name", "last_name"]],
+        fresh_employees[["employee_id", "first_name", "last_name"]],
         on="employee_id",
         how="left"
     )
