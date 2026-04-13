@@ -7,10 +7,9 @@ df = pd.read_csv("employees.csv")
 
 st.header("Select Your Vacation Weeks")
 
-# Dropdown of employees
 employee = st.selectbox(
     "Select Your Name",
-    df["Employee First Name"] + " " + df["Employee Last Name"]
+    df["first_name"] + " " + df["last_name"]
 )
 
 choice1 = st.text_input("First Choice")
