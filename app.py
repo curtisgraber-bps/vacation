@@ -14,7 +14,14 @@ CREATE TABLE IF NOT EXISTS submissions (
     employee_id TEXT PRIMARY KEY,
     choice1 TEXT,
     choice2 TEXT,
-    choice3 TEXT
+    choice3 TEXT,
+    choice4 TEXT,
+    choice5 TEXT,
+    choice6 TEXT,
+    choice7 TEXT,
+    choice8 TEXT,
+    choice9 TEXT,
+    choice10 TEXT
 )
 """)
 
@@ -48,7 +55,7 @@ weeks = generate_weeks()
 # -----------------------
 st.title("Vacation Scheduler")
 
-st.header("Select Your Vacation Weeks")
+st.header("Select Your Vacation Weeks (Up to 10 Choices)")
 
 selected = st.selectbox("Select Your Name", df["full_name"])
 employee_id = df[df["full_name"] == selected]["employee_id"].values[0]
@@ -62,18 +69,22 @@ existing = c.execute(
 if existing:
     st.warning("You have already submitted your selections.")
 else:
-    choice1 = st.selectbox("First Choice", [""] + weeks)
-    choice2 = st.selectbox("Second Choice", [""] + weeks)
-    choice3 = st.selectbox("Third Choice", [""] + weeks)
+    choices = []
+    for i in range(1, 11):
+        choice = st.selectbox(f"Choice {i}", [""] + weeks, key=f"choice_{i}")
+        choices.append(choice)
 
     if st.button("Submit"):
-        if not choice1 and not choice2 and not choice3:
+        if all(not c for c in choices):
             st.error("Select at least one week")
         else:
-            c.execute(
-                "INSERT INTO submissions (employee_id, choice1, choice2, choice3) VALUES (?, ?, ?, ?)",
-                (employee_id, choice1, choice2, choice3)
-            )
+            c.execute("""
+                INSERT INTO submissions (
+                    employee_id, choice1, choice2, choice3, choice4,
+                    choice5, choice6, choice7, choice8, choice9, choice10
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (employee_id, *choices))
+
             conn.commit()
             st.success("Submitted")
 
