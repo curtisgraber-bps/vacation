@@ -77,6 +77,8 @@ def hash_pw(pw):
     return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
 
 def check_pw(pw, hashed):
+    if not hashed or pd.isna(hashed):
+        return False
     return bcrypt.checkpw(pw.encode(), hashed.encode())
 
 def generate_weeks():
@@ -113,7 +115,8 @@ if not st.session_state.logged_in:
         if not emp.empty:
             emp = emp.iloc[0]
 
-            if not emp["password_hash"]:
+            # FIRST TIME PASSWORD SET
+            if not emp["password_hash"] or pd.isna(emp["password_hash"]):
                 new_pw = st.text_input("Create Password", type="password")
 
                 if st.button("Set Password"):
@@ -125,6 +128,7 @@ if not st.session_state.logged_in:
                     conn.commit()
                     st.success("Password set. Refresh and log in.")
 
+            # NORMAL LOGIN
             else:
                 pw = st.text_input("Password", type="password")
 
@@ -204,7 +208,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.success("Passwords cleared")
 
-    # ADD EMPLOYEE FORM
+    # ADD EMPLOYEE
     st.subheader("Add Employee")
 
     with st.form("add_employee_form"):
