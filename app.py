@@ -198,6 +198,31 @@ if st.session_state.logged_in and st.session_state.role == "user":
 
 # ADMIN VIEW
 if st.session_state.logged_in and st.session_state.role == "admin":
+    import random
+
+if st.button("Generate Test Submissions"):
+    c.execute("DELETE FROM submissions")
+
+    employees = get_employees()
+    weeks = active_weeks
+
+    for _, emp in employees.iterrows():
+        emp_id = emp["employee_id"]
+
+        # pick 1–10 random unique weeks
+        num_choices = random.randint(1, 10)
+        choices = random.sample(weeks, num_choices)
+
+        # pad to 10
+        choices += [""] * (10 - len(choices))
+
+        c.execute(
+            "INSERT INTO submissions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (emp_id, *choices)
+        )
+
+    conn.commit()
+    st.success("Test submissions generated")
 
     st.title("Admin Panel")
 
