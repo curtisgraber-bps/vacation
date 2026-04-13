@@ -3,6 +3,7 @@ import pandas as pd
 import sqlite3
 import datetime
 import bcrypt
+import random
 
 ADMIN_PASSWORD = "admin123"
 
@@ -198,31 +199,6 @@ if st.session_state.logged_in and st.session_state.role == "user":
 
 # ADMIN VIEW
 if st.session_state.logged_in and st.session_state.role == "admin":
-    import random
-
-if st.button("Generate Test Submissions"):
-    c.execute("DELETE FROM submissions")
-
-    employees = get_employees()
-    weeks = active_weeks
-
-    for _, emp in employees.iterrows():
-        emp_id = emp["employee_id"]
-
-        # pick 1–10 random unique weeks
-        num_choices = random.randint(1, 10)
-        choices = random.sample(weeks, num_choices)
-
-        # pad to 10
-        choices += [""] * (10 - len(choices))
-
-        c.execute(
-            "INSERT INTO submissions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (emp_id, *choices)
-        )
-
-    conn.commit()
-    st.success("Test submissions generated")
 
     st.title("Admin Panel")
 
@@ -233,6 +209,27 @@ if st.button("Generate Test Submissions"):
     if st.button("Clear Results"):
         c.execute("DELETE FROM results")
         conn.commit()
+
+    # TEST DATA GENERATOR
+    if st.button("Generate Test Submissions"):
+        c.execute("DELETE FROM submissions")
+
+        employees = get_employees()
+
+        for _, emp in employees.iterrows():
+            emp_id = emp["employee_id"]
+
+            num_choices = random.randint(1, 10)
+            choices = random.sample(active_weeks, num_choices)
+            choices += [""] * (10 - len(choices))
+
+            c.execute(
+                "INSERT INTO submissions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (emp_id, *choices)
+            )
+
+        conn.commit()
+        st.success("Test submissions generated")
 
     # RESET INDIVIDUAL PASSWORD
     st.subheader("Reset Individual Password")
