@@ -66,9 +66,7 @@ if pd.read_sql_query("SELECT COUNT(*) c FROM weeks", conn)["c"][0] == 0:
         c.execute("INSERT INTO weeks VALUES (%s, %s)", (w, True))
 
 def get_active_weeks():
-    return pd.read_sql_query(
-        "SELECT week FROM weeks WHERE enabled = TRUE", conn
-    )["week"].tolist()
+    return pd.read_sql_query("SELECT week FROM weeks WHERE enabled = TRUE", conn)["week"].tolist()
 
 # SESSION
 if "logged_in" not in st.session_state:
@@ -158,32 +156,24 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     col1, col2, col3 = st.columns(3)
 
-    with col1:
-        if st.button("Clear Submissions"):
-            c.execute("DELETE FROM submissions")
-            conn.commit()
+    if col1.button("Clear Submissions"):
+        c.execute("DELETE FROM submissions")
 
-    with col2:
-        if st.button("Clear Results"):
-            c.execute("DELETE FROM results")
-            conn.commit()
+    if col2.button("Clear Results"):
+        c.execute("DELETE FROM results")
 
-    with col3:
-        if st.button("Generate Test Submissions"):
-            c.execute("DELETE FROM submissions")
-            emps = get_employees()
-            weeks = get_active_weeks()
+    if col3.button("Generate Test Submissions"):
+        c.execute("DELETE FROM submissions")
+        emps = get_employees()
+        weeks = get_active_weeks()
 
-            for _, emp in emps.iterrows():
-                choices = random.sample(weeks, min(10, len(weeks)))
-                choices += [""] * (10 - len(choices))
+        for _, emp in emps.iterrows():
+            choices = random.sample(weeks, min(10, len(weeks)))
+            choices += [""] * (10 - len(choices))
+            c.execute("INSERT INTO submissions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                      (emp["employee_id"], *choices))
 
-                c.execute(
-                    "INSERT INTO submissions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                    (emp["employee_id"], *choices)
-                )
-
-            conn.commit()
+    conn.commit()
 
     st.markdown("---")
 
@@ -194,61 +184,55 @@ if st.session_state.logged_in and st.session_state.role == "admin":
     edited = st.data_editor(
         emps[["employee_id","first_name","last_name","hire_date","win_count"]],
         use_container_width=True,
-        num_rows="dynamic",
-        key="emp_editor"
+        num_rows="dynamic"
     )
 
     if st.button("Save Employee Changes"):
-
         original = get_employees().set_index("employee_id")
         edited_df = edited.set_index("employee_id")
-
-        updates = 0
 
         for emp_id in edited_df.index:
             if emp_id not in original.index:
                 continue
 
-            row_new = edited_df.loc[emp_id]
-            row_old = original.loc[emp_id]
+            new = edited_df.loc[emp_id]
+            old = original.loc[emp_id]
 
             if (
-                row_new["first_name"] != row_old["first_name"] or
-                row_new["last_name"] != row_old["last_name"] or
-                str(row_new["hire_date"]) != str(row_old["hire_date"]) or
-                int(row_new["win_count"]) != int(row_old["win_count"])
+                new["first_name"] != old["first_name"] or
+                new["last_name"] != old["last_name"] or
+                str(new["hire_date"]) != str(old["hire_date"]) or
+                int(new["win_count"]) != int(old["win_count"])
             ):
                 c.execute(
-                    """UPDATE employees 
-                       SET first_name=%s, last_name=%s, hire_date=%s, win_count=%s 
-                       WHERE employee_id=%s""",
-                    (
-                        row_new["first_name"],
-                        row_new["last_name"],
-                        row_new["hire_date"],
-                        int(row_new["win_count"]),
-                        emp_id
-                    )
+                    "UPDATE employees SET first_name=%s,last_name=%s,hire_date=%s,win_count=%s WHERE employee_id=%s",
+                    (new["first_name"], new["last_name"], new["hire_date"], int(new["win_count"]), emp_id)
                 )
-                updates += 1
 
         conn.commit()
-        st.success(f"{updates} employees updated")
         st.rerun()
 
-    # RESET PASSWORD (ADDED BACK)
-    st.markdown("---")
-    st.subheader("Reset Password")
+    # ADD USER + RESET PASSWORD (CLEAN ROW)
+    col1, col2, col3, col4 = st.columns(4)
 
-    col1, col2 = st.columns(2)
-    reset_id = col1.text_input("Employee ID")
-    if col2.button("Reset Password"):
+    new_id = col1.text_input("New ID")
+    new_fn = col2.text_input("First")
+    new_ln = col3.text_input("Last")
+    new_hd = col4.date_input("Hire Date")
+
+    if st.button("Add Employee"):
         c.execute(
-            "UPDATE employees SET password_hash = NULL WHERE employee_id = %s",
-            (reset_id,)
+            "INSERT INTO employees VALUES (%s,%s,%s,%s,%s,%s)",
+            (new_id, new_fn, new_ln, new_hd, 0, None)
         )
         conn.commit()
-        st.success("Password reset")
+        st.rerun()
+
+    col1, col2 = st.columns(2)
+    reset_id = col1.text_input("Reset ID")
+    if col2.button("Reset Password"):
+        c.execute("UPDATE employees SET password_hash=NULL WHERE employee_id=%s", (reset_id,))
+        conn.commit()
 
     st.markdown("---")
 
@@ -260,19 +244,20 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         val = st.checkbox(row["week"], value=row["enabled"], key=row["week"])
         if val != row["enabled"]:
             c.execute("UPDATE weeks SET enabled=%s WHERE week=%s", (val, row["week"]))
-            conn.commit()
+
+    conn.commit()
 
     st.markdown("---")
 
     st.subheader("Submission Details")
 
-    subs_full = pd.read_sql_query("SELECT * FROM submissions", conn)
-    full = subs_full.merge(emps, on="employee_id", how="left")
+    subs = pd.read_sql_query("SELECT * FROM submissions", conn)
+    full = subs.merge(get_employees(), on="employee_id")
 
-    def combine(r):
-        return ", ".join([str(r[f"choice{i}"]) for i in range(1,11) if r[f"choice{i}"]])
-
-    full["choices"] = full.apply(combine, axis=1)
+    full["choices"] = full.apply(
+        lambda r: ", ".join([str(r[f"choice{i}"]) for i in range(1,11) if r[f"choice{i}"]]),
+        axis=1
+    )
 
     st.dataframe(full[["first_name","last_name","choices"]])
 
@@ -302,24 +287,13 @@ if st.session_state.logged_in and st.session_state.role == "admin":
                     break
 
         for w in winners:
-            c.execute(
-                "UPDATE employees SET win_count = COALESCE(win_count,0) + 1 WHERE employee_id=%s",
-                (str(w).strip(),)
-            )
+            c.execute("UPDATE employees SET win_count = win_count + 1 WHERE employee_id=%s", (w,))
 
         conn.commit()
 
     st.markdown("---")
 
     res = pd.read_sql_query("SELECT * FROM results", conn)
-    emps = get_employees()
-    res = res.merge(emps, on="employee_id", how="left")
+    res = res.merge(get_employees(), on="employee_id")
 
     st.dataframe(res[["first_name","last_name","assigned_week","win_count"]])
-
-    st.download_button(
-        "Download Results",
-        res.to_csv(index=False).encode("utf-8"),
-        "results.csv",
-        "text/csv"
-    )
