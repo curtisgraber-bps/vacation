@@ -198,13 +198,24 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         st.rerun()
 
     # RESET PASSWORD
-    st.subheader("Reset Password")
-    rid = st.text_input("Employee ID to reset")
-    if st.button("Reset Password"):
-        c.execute("UPDATE employees SET password_hash=NULL WHERE employee_id=%s", (rid,))
+   st.subheader("Reset Password")
+
+rid = st.text_input("Employee ID to reset", key="reset_id")
+
+if st.button("Reset Password", key="reset_btn"):
+    if not rid.strip():
+        st.error("Enter an Employee ID")
+    else:
+        c.execute(
+            "UPDATE employees SET password_hash = NULL WHERE employee_id = %s",
+            (rid.strip(),)
+        )
         conn.commit()
 
-    st.markdown("---")
+        if c.rowcount == 0:
+            st.error("Employee not found")
+        else:
+            st.success("Password reset. User will create a new one on next login.")
 
     # WEEKS (WORKING)
     st.subheader("Weeks")
