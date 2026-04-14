@@ -13,7 +13,6 @@ conn = psycopg2.connect(
 conn.autocommit = True
 c = conn.cursor()
 
-# TABLES
 c.execute("""CREATE TABLE IF NOT EXISTS employees (
     employee_id TEXT PRIMARY KEY,
     first_name TEXT,
@@ -39,7 +38,6 @@ c.execute("""CREATE TABLE IF NOT EXISTS weeks (
     enabled BOOLEAN
 )""")
 
-# HELPERS
 def get_employees():
     df = pd.read_sql_query("SELECT * FROM employees", conn)
     df["employee_id"] = df["employee_id"].astype(str).str.strip()
@@ -64,18 +62,15 @@ def generate_weeks():
 def get_active_weeks():
     return pd.read_sql_query("SELECT week FROM weeks WHERE enabled = TRUE", conn)["week"].tolist()
 
-# INIT
 if pd.read_sql_query("SELECT COUNT(*) c FROM weeks", conn)["c"][0] == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (%s,%s)", (w, True))
 
-# SESSION
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.role = None
     st.session_state.user_id = None
 
-# LOGIN
 if not st.session_state.logged_in:
     st.title("Login")
 
@@ -111,13 +106,11 @@ if not st.session_state.logged_in:
             st.session_state.role = "admin"
             st.rerun()
 
-# LOGOUT
 if st.session_state.logged_in:
     if st.button("Logout", key="logout"):
         st.session_state.clear()
         st.rerun()
 
-# USER
 if st.session_state.logged_in and st.session_state.role == "user":
     st.title("Vacation Scheduler")
 
@@ -141,7 +134,6 @@ if st.session_state.logged_in and st.session_state.role == "user":
             conn.commit()
             st.rerun()
 
-# ADMIN
 if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.title("Admin Panel")
@@ -158,7 +150,6 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         c.execute("DELETE FROM submissions")
         emps = get_employees()
         weeks = get_active_weeks()
-
         for _, emp in emps.iterrows():
             choices = random.sample(weeks, min(10, len(weeks)))
             choices += [""] * (10 - len(choices))
@@ -169,7 +160,6 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.divider()
 
-    # EMPLOYEES
     st.subheader("Employees")
 
     emps = get_employees()
@@ -187,7 +177,6 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         for emp_id in edited_df.index:
             if emp_id not in original.index:
                 continue
-
             new = edited_df.loc[emp_id]
             old = original.loc[emp_id]
 
@@ -205,9 +194,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.rerun()
 
-    # ADD + RESET
     col1, col2, col3, col4 = st.columns(4)
-
     new_id = col1.text_input("New ID")
     new_fn = col2.text_input("First")
     new_ln = col3.text_input("Last")
@@ -227,33 +214,31 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.divider()
 
-    # WEEKS
-st.subheader("Weeks")
+    st.subheader("Weeks")
 
-col1, col2 = st.columns(2)
+    col1, col2 = st.columns(2)
 
-if col1.button("Select All Weeks", key="select_all"):
-    c.execute("UPDATE weeks SET enabled=TRUE")
-    conn.commit()
-    st.rerun()
-
-if col2.button("Deselect All Weeks", key="deselect_all"):
-    c.execute("UPDATE weeks SET enabled=FALSE")
-    conn.commit()
-    st.rerun()
-
-# IMPORTANT: fetch AFTER buttons (fresh data)
-weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
-
-for _, row in weeks_df.iterrows():
-    val = st.checkbox(row["week"], value=row["enabled"], key=f"week_{row['week']}")
-    if val != row["enabled"]:
-        c.execute("UPDATE weeks SET enabled=%s WHERE week=%s", (val, row["week"]))
+    if col1.button("Select All Weeks", key="select_all"):
+        c.execute("UPDATE weeks SET enabled=TRUE")
         conn.commit()
+        st.rerun()
+
+    if col2.button("Deselect All Weeks", key="deselect_all"):
+        c.execute("UPDATE weeks SET enabled=FALSE")
+        conn.commit()
+        st.rerun()
+
+    weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
+
+    for _, row in weeks_df.iterrows():
+        val = st.checkbox(row["week"], value=row["enabled"], key=f"week_{row['week']}")
+        if val != row["enabled"]:
+            c.execute("UPDATE weeks SET enabled=%s WHERE week=%s", (val, row["week"]))
+
+    conn.commit()
 
     st.divider()
 
-    # LOTTERY
     if st.button("Run Lottery", key="run_lottery"):
         c.execute("DELETE FROM results")
 
