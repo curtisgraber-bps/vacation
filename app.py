@@ -252,8 +252,11 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         c.execute("UPDATE weeks SET enabled=FALSE")
         conn.commit()
         st.rerun()
-
-    weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
+weeks_df = pd.read_sql_query("""
+SELECT *
+FROM weeks
+ORDER BY TO_DATE(split_part(week, ' to ', 1), 'YYYY-MM-DD')
+""", conn)
 
     for _, row in weeks_df.iterrows():
         key = f"week_{row['week']}"
