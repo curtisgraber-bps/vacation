@@ -149,15 +149,71 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.title("Admin Panel")
 
+    # CONTROLS
+    col1, col2, col3 = st.columns(3)
+    if col1.button("Clear Submissions"):
+        c.execute("DELETE FROM submissions")
+    if col2.button("Clear Results"):
+        c.execute("DELETE FROM results")
+    if col3.button("Generate Test Submissions"):
+        c.execute("DELETE FROM submissions")
+        emps = get_employees()
+        weeks = get_active_weeks()
+        for _, emp in emps.iterrows():
+            choices = random.sample(weeks, min(10, len(weeks)))
+            choices += [""] * (10 - len(choices))
+            c.execute("INSERT INTO submissions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                      (emp["employee_id"], *choices))
+    conn.commit()
+
+    st.markdown("---")
+
+    # EMPLOYEES
+    st.subheader("Employees")
+
+    emps = get_employees()
+    edited = st.data_editor(emps, use_container_width=True)
+
+    if st.button("Save Employee Changes"):
+        edited_df = edited.set_index("employee_id")
+        for emp_id, row in edited_df.iterrows():
+            c.execute("""UPDATE employees 
+                         SET first_name=%s,last_name=%s,hire_date=%s,win_count=%s
+                         WHERE employee_id=%s""",
+                      (row["first_name"], row["last_name"], row["hire_date"], int(row["win_count"]), emp_id))
+        conn.commit()
+        st.rerun()
+
+    # ADD EMPLOYEE
+    st.subheader("Add Employee")
+    new_id = st.text_input("New ID")
+    new_fn = st.text_input("First")
+    new_ln = st.text_input("Last")
+    new_hd = st.date_input("Hire Date")
+
+    if st.button("Add Employee"):
+        c.execute("INSERT INTO employees VALUES (%s,%s,%s,%s,%s,%s)",
+                  (new_id, new_fn, new_ln, new_hd, 0, None))
+        conn.commit()
+        st.rerun()
+
+    # RESET PASSWORD
+    st.subheader("Reset Password")
+    rid = st.text_input("Employee ID to reset")
+    if st.button("Reset Password"):
+        c.execute("UPDATE employees SET password_hash=NULL WHERE employee_id=%s", (rid,))
+        conn.commit()
+
+    st.markdown("---")
+
+    # WEEKS (WORKING)
     st.subheader("Weeks")
 
     col1, col2 = st.columns(2)
-
     if col1.button("Select All Weeks"):
         c.execute("UPDATE weeks SET enabled=TRUE")
         conn.commit()
         st.rerun()
-
     if col2.button("Deselect All Weeks"):
         c.execute("UPDATE weeks SET enabled=FALSE")
         conn.commit()
@@ -181,6 +237,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.markdown("---")
 
+    # LOTTERY + RESULTS
     if st.button("Run Lottery"):
         c.execute("DELETE FROM results")
 
