@@ -195,23 +195,40 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         num_rows="dynamic",
         key="emp_editor"
     )
+if st.button("Save Employee Changes"):
 
-    if st.button("Save Employee Changes"):
-        for _, row in edited.iterrows():
+    original = get_employees().set_index("employee_id")
+    edited_df = edited.set_index("employee_id")
+
+    updates = 0
+
+    for emp_id in edited_df.index:
+        row_new = edited_df.loc[emp_id]
+        row_old = original.loc[emp_id]
+
+        if (
+            row_new["first_name"] != row_old["first_name"] or
+            row_new["last_name"] != row_old["last_name"] or
+            str(row_new["hire_date"]) != str(row_old["hire_date"]) or
+            int(row_new["win_count"]) != int(row_old["win_count"])
+        ):
             c.execute(
                 """UPDATE employees 
                    SET first_name=%s, last_name=%s, hire_date=%s, win_count=%s 
                    WHERE employee_id=%s""",
                 (
-                    row["first_name"],
-                    row["last_name"],
-                    row["hire_date"],
-                    int(row["win_count"]),
-                    row["employee_id"]
+                    row_new["first_name"],
+                    row_new["last_name"],
+                    row_new["hire_date"],
+                    int(row_new["win_count"]),
+                    emp_id
                 )
             )
-        conn.commit()
-        st.success("Saved")
+            updates += 1
+
+    conn.commit()
+    st.success(f"{updates} employees updated")
+    st.rerun()
 
     st.markdown("---")
 
