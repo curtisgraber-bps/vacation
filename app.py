@@ -167,7 +167,6 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.markdown("---")
 
-    # SUBMISSIONS
     st.subheader("Submissions")
 
     subs = pd.read_sql_query("SELECT * FROM submissions", conn)
@@ -185,7 +184,6 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.markdown("---")
 
-    # EMPLOYEES
     st.subheader("Employees")
 
     edited = st.data_editor(
@@ -238,7 +236,6 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.markdown("---")
 
-    # WEEKS (FIXED)
     st.subheader("Weeks")
 
     col1, col2 = st.columns(2)
@@ -252,11 +249,12 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         c.execute("UPDATE weeks SET enabled=FALSE")
         conn.commit()
         st.rerun()
-weeks_df = pd.read_sql_query("""
-SELECT *
-FROM weeks
-ORDER BY TO_DATE(split_part(week, ' to ', 1), 'YYYY-MM-DD')
-""", conn)
+
+    weeks_df = pd.read_sql_query("""
+    SELECT *
+    FROM weeks
+    ORDER BY TO_DATE(split_part(week, ' to ', 1), 'YYYY-MM-DD')
+    """, conn)
 
     for _, row in weeks_df.iterrows():
         key = f"week_{row['week']}"
@@ -273,7 +271,6 @@ ORDER BY TO_DATE(split_part(week, ' to ', 1), 'YYYY-MM-DD')
 
     st.markdown("---")
 
-    # LOTTERY
     if st.button("Run Lottery"):
         c.execute("DELETE FROM results")
 
