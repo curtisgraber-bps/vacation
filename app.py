@@ -233,13 +233,24 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.rerun()
 
-    col1, col2 = st.columns(2)
-    reset_id = col1.text_input("Reset ID")
-    if col2.button("Reset Password"):
-        c.execute("UPDATE employees SET password_hash=NULL WHERE employee_id=%s", (reset_id,))
+ col1, col2 = st.columns(2)
+
+reset_id = col1.text_input("Reset ID")
+
+if col2.button("Reset Password"):
+    if not reset_id:
+        st.error("Enter an Employee ID")
+    else:
+        result = c.execute(
+            "UPDATE employees SET password_hash = NULL WHERE employee_id = %s",
+            (reset_id.strip(),)
+        )
         conn.commit()
 
-    st.markdown("---")
+        if c.rowcount == 0:
+            st.error("Employee not found")
+        else:
+            st.success("Password reset. User will set a new one on next login.")
 
     st.subheader("Weeks")
 
