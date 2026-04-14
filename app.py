@@ -105,6 +105,9 @@ if not st.session_state.logged_in:
                     st.session_state.user_id = login_id
                     st.rerun()
 
+    # SPACING ADDED
+    st.markdown("<br><br>", unsafe_allow_html=True)
+
     if st.checkbox("Admin login"):
         pw = st.text_input("Admin Password", type="password")
         if st.button("Admin Login") and pw == ADMIN_PASSWORD:
@@ -196,47 +199,44 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         key="emp_editor"
     )
 
-    st.session_state["edited_emps"] = edited
-
+    # FIXED SAVE LOGIC
     if st.button("Save Employee Changes"):
-        edited_df = st.session_state.get("edited_emps")
 
-        if edited_df is not None:
-            original = get_employees().set_index("employee_id")
-            edited_df = edited_df.set_index("employee_id")
+        original = get_employees().set_index("employee_id")
+        edited_df = edited.set_index("employee_id")
 
-            updates = 0
+        updates = 0
 
-            for emp_id in edited_df.index:
-                if emp_id not in original.index:
-                    continue
+        for emp_id in edited_df.index:
+            if emp_id not in original.index:
+                continue
 
-                row_new = edited_df.loc[emp_id]
-                row_old = original.loc[emp_id]
+            row_new = edited_df.loc[emp_id]
+            row_old = original.loc[emp_id]
 
-                if (
-                    row_new["first_name"] != row_old["first_name"] or
-                    row_new["last_name"] != row_old["last_name"] or
-                    str(row_new["hire_date"]) != str(row_old["hire_date"]) or
-                    int(row_new["win_count"]) != int(row_old["win_count"])
-                ):
-                    c.execute(
-                        """UPDATE employees 
-                           SET first_name=%s, last_name=%s, hire_date=%s, win_count=%s 
-                           WHERE employee_id=%s""",
-                        (
-                            row_new["first_name"],
-                            row_new["last_name"],
-                            row_new["hire_date"],
-                            int(row_new["win_count"]),
-                            emp_id
-                        )
+            if (
+                row_new["first_name"] != row_old["first_name"] or
+                row_new["last_name"] != row_old["last_name"] or
+                str(row_new["hire_date"]) != str(row_old["hire_date"]) or
+                int(row_new["win_count"]) != int(row_old["win_count"])
+            ):
+                c.execute(
+                    """UPDATE employees 
+                       SET first_name=%s, last_name=%s, hire_date=%s, win_count=%s 
+                       WHERE employee_id=%s""",
+                    (
+                        row_new["first_name"],
+                        row_new["last_name"],
+                        row_new["hire_date"],
+                        int(row_new["win_count"]),
+                        emp_id
                     )
-                    updates += 1
+                )
+                updates += 1
 
-            conn.commit()
-            st.success(f"{updates} employees updated")
-            st.rerun()
+        conn.commit()
+        st.success(f"{updates} employees updated")
+        st.rerun()
 
     st.markdown("---")
 
