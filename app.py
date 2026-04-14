@@ -236,9 +236,9 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.markdown("---")
 
-    st.subheader("Weeks")
+st.subheader("Weeks")
 
-    col1, col2 = st.columns(2)
+col1, col2 = st.columns(2)
 
 if col1.button("Select All Weeks"):
     c.execute("UPDATE weeks SET enabled = TRUE")
@@ -250,12 +250,13 @@ if col2.button("Deselect All Weeks"):
     conn.commit()
     st.rerun()
 
-    weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
+weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
 
-    for _, row in weeks_df.iterrows():
-        val = st.checkbox(row["week"], value=row["enabled"], key=row["week"])
-        if val != row["enabled"]:
-            c.execute("UPDATE weeks SET enabled=%s WHERE week=%s", (val, row["week"]))
+for _, row in weeks_df.iterrows():
+    val = st.checkbox(row["week"], value=row["enabled"], key=row["week"])
+    if val != row["enabled"]:
+        c.execute("UPDATE weeks SET enabled=%s WHERE week=%s", (val, row["week"]))
+        conn.commit()
 
     conn.commit()
 
