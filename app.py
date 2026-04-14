@@ -198,11 +198,8 @@ if st.session_state.logged_in and st.session_state.role == "admin":
     if st.button("Clear Results"):
         c.execute("DELETE FROM results")
 
-    # TESTING
-    st.subheader("Testing")
-    st.warning("For Testing Only")
-
-    if st.button("Generate Test Submissions"):
+if st.button("Generate Test Submissions"):
+    try:
         c.execute("DELETE FROM submissions")
 
         employees = get_employees()
@@ -219,7 +216,12 @@ if st.session_state.logged_in and st.session_state.role == "admin":
                 (emp_id, *choices)
             )
 
-        st.success("Test submissions generated")
+        conn.commit()  # <-- THIS IS THE FIX
+
+        st.success(f"Test submissions generated for {len(employees)} employees")
+
+    except Exception as e:
+        st.error(f"Error: {e}")
 
     # WHO SUBMITTED
     st.subheader("Who Has Submitted")
