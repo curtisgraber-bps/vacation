@@ -61,7 +61,12 @@ def generate_weeks():
     return [f"{start + datetime.timedelta(weeks=i)} to {start + datetime.timedelta(days=7 + i*7)}" for i in range(52)]
 
 def get_active_weeks():
-    return pd.read_sql_query("SELECT week FROM weeks WHERE enabled = TRUE", conn)["week"].tolist()
+    return pd.read_sql_query("""
+    SELECT week
+    FROM weeks
+    WHERE enabled = TRUE
+    ORDER BY TO_DATE(split_part(week, ' to ', 1), 'YYYY-MM-DD')
+    """, conn)["week"].tolist()
 
 # INIT
 if pd.read_sql_query("SELECT COUNT(*) c FROM weeks", conn)["c"][0] == 0:
