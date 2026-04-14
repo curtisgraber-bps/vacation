@@ -167,6 +167,12 @@ if st.session_state.logged_in and st.session_state.role == "user":
 
     if existing:
         st.success("Submission received")
+
+        choices = [existing[i] for i in range(1, 11) if existing[i]]
+
+        st.subheader("Your Selections")
+        for i, choice in enumerate(choices, 1):
+            st.write(f"{i}. {choice}")
     else:
         choices = [st.selectbox(f"Choice {i}", [""] + active_weeks, key=f"c{i}") for i in range(1, 11)]
 
@@ -179,6 +185,7 @@ if st.session_state.logged_in and st.session_state.role == "user":
                     (employee_id, *choices)
                 )
                 st.success("Submitted")
+                st.rerun()
 
 # ADMIN VIEW
 if st.session_state.logged_in and st.session_state.role == "admin":
@@ -191,6 +198,47 @@ if st.session_state.logged_in and st.session_state.role == "admin":
     if st.button("Clear Results"):
         c.execute("DELETE FROM results")
 
+    # WHO SUBMITTED
+    st.subheader("Who Has Submitted")
+
+    subs = pd.read_sql_query("SELECT employee_id FROM submissions", conn)
+    emps = get_employees()
+
+    view = subs.merge(
+        emps[["employee_id", "first_name", "last_name"]],
+        on="employee_id",
+        how="left"
+    )
+
+    st.write(view[["first_name", "last_name"]].sort_values(by="last_name"))
+
+    # SUBMISSION DETAILS
+    st.subheader("Submission Details")
+
+    subs_full = pd.read_sql_query("SELECT * FROM submissions", conn)
+
+    view_full = subs_full.merge(
+        emps[["employee_id", "first_name", "last_name"]],
+        on="employee_id",
+        how="left"
+    )
+
+    def combine_choices(row):
+        vals = []
+        for i in range(1, 11):
+            col = f"choice{i}"
+            if col in row and pd.notna(row[col]) and row[col] != "":
+                vals.append(str(row[col]))
+        return ", ".join(vals)
+
+    view_full["choices"] = view_full.apply(combine_choices, axis=1)
+
+    st.write(
+        view_full[["first_name", "last_name", "choices"]]
+        .sort_values(by="last_name")
+    )
+
+    # RUN LOTTERY
     st.subheader("Run Lottery")
 
     if st.button("Run Lottery"):
@@ -223,3 +271,23 @@ if st.session_state.logged_in and st.session_state.role == "admin":
             )
 
         st.success("Lottery Complete")
+
+    # RESULTS + DOWNLOAD
+    results_df = pd.read_sql_query("SELECT * FROM results", conn)
+
+    results_df = results_df.merge(
+        emps[["employee_id", "first_name", "last_name", "win_count"]],
+        on="employee_id",
+        how="left"
+    )
+
+    st.write(results_df)
+
+    csv = results_df.to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+        "Download Results",
+        csv,
+        "results.csv",
+        "text/csv"
+    )
