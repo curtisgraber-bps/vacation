@@ -291,18 +291,20 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         ORDER BY TO_DATE(split_part(week, ' to ', 1), 'YYYY-MM-DD')
     """, conn)
 
-    for _, row in weeks_df.iterrows():
-        key = f"week_{row['week']}"
+  for _, row in weeks_df.iterrows():
+    key = f"week_{row['week']}"
+
+    if key not in st.session_state:
         st.session_state[key] = row["enabled"]
 
-        val = st.checkbox(row["week"], key=key)
+    val = st.checkbox(row["week"], key=key)
 
-        if val != row["enabled"]:
-            c.execute(
-                "UPDATE weeks SET enabled=%s WHERE week=%s",
-                (val, row["week"])
-            )
-            conn.commit()
+    if val != row["enabled"]:
+        c.execute(
+            "UPDATE weeks SET enabled=%s WHERE week=%s",
+            (val, row["week"])
+        )
+        conn.commit()
 
     st.markdown("---")
 
