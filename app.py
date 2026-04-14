@@ -63,7 +63,7 @@ def generate_weeks():
 def get_active_weeks():
     return pd.read_sql_query("SELECT week FROM weeks WHERE enabled = TRUE", conn)["week"].tolist()
 
-# INIT WEEKS
+# INIT
 if pd.read_sql_query("SELECT COUNT(*) c FROM weeks", conn)["c"][0] == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (%s,%s)", (w, True))
@@ -167,7 +167,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.markdown("---")
 
-    # SUBMISSIONS VIEW (FIXED)
+    # SUBMISSIONS
     st.subheader("Submissions")
 
     subs = pd.read_sql_query("SELECT * FROM submissions", conn)
@@ -175,18 +175,17 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     if not subs.empty:
         full = subs.merge(emps, on="employee_id", how="left")
-
         full["choices"] = full.apply(
             lambda r: ", ".join([str(r[f"choice{i}"]) for i in range(1,11) if r[f"choice{i}"]]),
             axis=1
         )
-
         st.dataframe(full[["first_name","last_name","choices"]])
     else:
         st.info("No submissions yet")
 
     st.markdown("---")
 
+    # EMPLOYEES
     st.subheader("Employees")
 
     edited = st.data_editor(
@@ -219,8 +218,22 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.rerun()
 
+    # ADD EMPLOYEE (BACK)
+    col1, col2, col3, col4 = st.columns(4)
+    new_id = col1.text_input("New ID")
+    new_fn = col2.text_input("First")
+    new_ln = col3.text_input("Last")
+    new_hd = col4.date_input("Hire Date")
+
+    if st.button("Add Employee"):
+        c.execute("INSERT INTO employees VALUES (%s,%s,%s,%s,%s,%s)",
+                  (new_id, new_fn, new_ln, new_hd, 0, None))
+        conn.commit()
+        st.rerun()
+
     st.markdown("---")
 
+    # LOTTERY
     if st.button("Run Lottery"):
         c.execute("DELETE FROM results")
 
