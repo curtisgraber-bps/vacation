@@ -173,11 +173,10 @@ if st.session_state.logged_in and st.session_state.role == "admin":
     st.markdown("---")
 
     # EMPLOYEE EDIT
-    st.subheader("Employees")
+   st.subheader("Employees")
 
-    emps = get_employees()
-    edited = st.data_editor(emps, use_container_width=True)
-
+emps = get_employees().sort_values(by="employee_id", key=lambda x: x.astype(int))
+edited = st.data_editor(emps, use_container_width=True)
     if st.button("Save Employee Changes"):
         for _, row in edited.iterrows():
             c.execute("""UPDATE employees SET
