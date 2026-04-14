@@ -238,6 +238,18 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.subheader("Weeks")
 
+    col1, col2 = st.columns(2)
+
+if col1.button("Select All Weeks"):
+    c.execute("UPDATE weeks SET enabled = TRUE")
+    conn.commit()
+    st.rerun()
+
+if col2.button("Deselect All Weeks"):
+    c.execute("UPDATE weeks SET enabled = FALSE")
+    conn.commit()
+    st.rerun()
+
     weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
 
     for _, row in weeks_df.iterrows():
