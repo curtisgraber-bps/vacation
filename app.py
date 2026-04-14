@@ -310,20 +310,23 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.success("Lottery Complete")
 
-    # RESULTS
-    results_df = pd.read_sql_query("SELECT * FROM results", conn)
+# RESULTS (FIXED)
+results_df = pd.read_sql_query("SELECT * FROM results", conn)
 
-    results_df = results_df.merge(
-        emps[["employee_id", "first_name", "last_name", "win_count"]],
-        on="employee_id",
-        how="left"
-    )
+# reload fresh employees AFTER lottery
+emps = get_employees()
 
-    st.write(results_df)
+results_df = results_df.merge(
+    emps[["employee_id", "first_name", "last_name", "win_count"]],
+    on="employee_id",
+    how="left"
+)
 
-    st.download_button(
-        "Download Results",
-        results_df.to_csv(index=False).encode("utf-8"),
-        "results.csv",
-        "text/csv"
-    )
+st.write(results_df)
+
+st.download_button(
+    "Download Results",
+    results_df.to_csv(index=False).encode("utf-8"),
+    "results.csv",
+    "text/csv"
+)
