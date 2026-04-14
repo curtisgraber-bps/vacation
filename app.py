@@ -13,6 +13,7 @@ conn = psycopg2.connect(
 conn.autocommit = True
 c = conn.cursor()
 
+# TABLES
 c.execute("""CREATE TABLE IF NOT EXISTS employees (
     employee_id TEXT PRIMARY KEY,
     first_name TEXT,
@@ -62,15 +63,18 @@ def generate_weeks():
 def get_active_weeks():
     return pd.read_sql_query("SELECT week FROM weeks WHERE enabled = TRUE", conn)["week"].tolist()
 
+# INIT WEEKS
 if pd.read_sql_query("SELECT COUNT(*) c FROM weeks", conn)["c"][0] == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (%s,%s)", (w, True))
 
+# SESSION
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.role = None
     st.session_state.user_id = None
 
+# LOGIN
 if not st.session_state.logged_in:
     st.title("Login")
 
@@ -85,13 +89,13 @@ if not st.session_state.logged_in:
 
             if not emp["password_hash"] or pd.isna(emp["password_hash"]):
                 pw = st.text_input("Create Password", type="password")
-                if st.button("Set Password", key="set_pw") and pw:
+                if st.button("Set Password") and pw:
                     c.execute("UPDATE employees SET password_hash=%s WHERE employee_id=%s",
                               (hash_pw(pw), login_id))
                     conn.commit()
             else:
                 pw = st.text_input("Password", type="password")
-                if st.button("Login", key="login_btn") and check_pw(pw, emp["password_hash"]):
+                if st.button("Login") and check_pw(pw, emp["password_hash"]):
                     st.session_state.logged_in = True
                     st.session_state.role = "user"
                     st.session_state.user_id = login_id
@@ -101,16 +105,18 @@ if not st.session_state.logged_in:
 
     if st.checkbox("Admin login"):
         pw = st.text_input("Admin Password", type="password")
-        if st.button("Admin Login", key="admin_login") and pw == ADMIN_PASSWORD:
+        if st.button("Admin Login") and pw == ADMIN_PASSWORD:
             st.session_state.logged_in = True
             st.session_state.role = "admin"
             st.rerun()
 
+# LOGOUT
 if st.session_state.logged_in:
-    if st.button("Logout", key="logout"):
+    if st.button("Logout"):
         st.session_state.clear()
         st.rerun()
 
+# USER
 if st.session_state.logged_in and st.session_state.role == "user":
     st.title("Vacation Scheduler")
 
@@ -128,25 +134,26 @@ if st.session_state.logged_in and st.session_state.role == "user":
     else:
         choices = [st.selectbox(f"Choice {i}", [""] + weeks, key=f"c{i}") for i in range(1,11)]
 
-        if st.button("Submit", key="submit_choices"):
+        if st.button("Submit"):
             c.execute("INSERT INTO submissions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                       (eid, *choices))
             conn.commit()
             st.rerun()
 
+# ADMIN
 if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.title("Admin Panel")
 
     col1, col2, col3 = st.columns(3)
 
-    if col1.button("Clear Submissions", key="clear_subs"):
+    if col1.button("Clear Submissions"):
         c.execute("DELETE FROM submissions")
 
-    if col2.button("Clear Results", key="clear_results"):
+    if col2.button("Clear Results"):
         c.execute("DELETE FROM results")
 
-    if col3.button("Generate Test Submissions", key="gen_test"):
+    if col3.button("Generate Test Submissions"):
         c.execute("DELETE FROM submissions")
         emps = get_employees()
         weeks = get_active_weeks()
@@ -158,11 +165,29 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     conn.commit()
 
-    st.divider()
+    st.markdown("---")
+
+    # SUBMISSIONS VIEW (FIXED)
+    st.subheader("Submissions")
+
+    subs = pd.read_sql_query("SELECT * FROM submissions", conn)
+    emps = get_employees()
+
+    if not subs.empty:
+        full = subs.merge(emps, on="employee_id", how="left")
+
+        full["choices"] = full.apply(
+            lambda r: ", ".join([str(r[f"choice{i}"]) for i in range(1,11) if r[f"choice{i}"]]),
+            axis=1
+        )
+
+        st.dataframe(full[["first_name","last_name","choices"]])
+    else:
+        st.info("No submissions yet")
+
+    st.markdown("---")
 
     st.subheader("Employees")
-
-    emps = get_employees()
 
     edited = st.data_editor(
         emps[["employee_id","first_name","last_name","hire_date","win_count"]],
@@ -170,7 +195,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         num_rows="dynamic"
     )
 
-    if st.button("Save Employee Changes", key="save_emp"):
+    if st.button("Save Employee Changes"):
         original = get_employees().set_index("employee_id")
         edited_df = edited.set_index("employee_id")
 
@@ -194,66 +219,9 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.rerun()
 
-    col1, col2, col3, col4 = st.columns(4)
-    new_id = col1.text_input("New ID")
-    new_fn = col2.text_input("First")
-    new_ln = col3.text_input("Last")
-    new_hd = col4.date_input("Hire Date")
+    st.markdown("---")
 
-    if st.button("Add Employee", key="add_emp"):
-        c.execute("INSERT INTO employees VALUES (%s,%s,%s,%s,%s,%s)",
-                  (new_id, new_fn, new_ln, new_hd, 0, None))
-        conn.commit()
-        st.rerun()
-
-    col1, col2 = st.columns(2)
-    reset_id = col1.text_input("Reset ID")
-    if col2.button("Reset Password", key="reset_pw"):
-        c.execute("UPDATE employees SET password_hash=NULL WHERE employee_id=%s", (reset_id,))
-        conn.commit()
-
-    st.divider()
-
-    st.subheader("Weeks")
-
-    col1, col2 = st.columns(2)
-
-    if col1.button("Select All Weeks", key="select_all"):
-        c.execute("UPDATE weeks SET enabled=TRUE")
-        conn.commit()
-        for k in list(st.session_state.keys()):
-            if k.startswith("week_"):
-                del st.session_state[k]
-        st.rerun()
-
-    if col2.button("Deselect All Weeks", key="deselect_all"):
-        c.execute("UPDATE weeks SET enabled=FALSE")
-        conn.commit()
-        for k in list(st.session_state.keys()):
-            if k.startswith("week_"):
-                del st.session_state[k]
-        st.rerun()
-
-    weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
-
-    new_states = {}
-
-    for _, row in weeks_df.iterrows():
-        new_states[row["week"]] = st.checkbox(
-            row["week"],
-            value=row["enabled"],
-            key=f"week_{row['week']}"
-        )
-
-    if st.button("Save Week Changes", key="save_weeks"):
-        for week, val in new_states.items():
-            c.execute("UPDATE weeks SET enabled=%s WHERE week=%s", (val, week))
-        conn.commit()
-        st.rerun()
-
-    st.divider()
-
-    if st.button("Run Lottery", key="run_lottery"):
+    if st.button("Run Lottery"):
         c.execute("DELETE FROM results")
 
         emps = get_employees()
@@ -277,7 +245,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
         conn.commit()
 
-    st.divider()
+    st.markdown("---")
 
     res = pd.read_sql_query("SELECT * FROM results", conn)
     res = res.merge(get_employees(), on="employee_id")
