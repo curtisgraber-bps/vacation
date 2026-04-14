@@ -7,7 +7,7 @@ import random
 
 ADMIN_PASSWORD = "admin123"
 
-# SUPABASE CONNECTION
+# SUPABASE CONNECTION (pooled)
 conn = psycopg2.connect(
     "postgresql://postgres.ugnxfszbikjuzaklsnji:BPApwisl33t@aws-1-ca-central-1.pooler.supabase.com:5432/postgres"
 )
@@ -84,7 +84,9 @@ if count == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (%s, %s)", (w, True))
 
-active_weeks = pd.read_sql_query("SELECT week FROM weeks WHERE enabled = TRUE", conn)["week"].tolist()
+active_weeks = pd.read_sql_query(
+    "SELECT week FROM weeks WHERE enabled = TRUE", conn
+)["week"].tolist()
 
 # SESSION
 if "logged_in" not in st.session_state:
@@ -121,6 +123,7 @@ if not st.session_state.logged_in:
                             "UPDATE employees SET password_hash=%s WHERE employee_id=%s",
                             (h, str(login_id).strip())
                         )
+                        conn.commit()
                         st.success("Password set. Log in now.")
             else:
                 pw = st.text_input("Password", type="password")
@@ -136,9 +139,7 @@ if not st.session_state.logged_in:
 
     st.markdown("---")
 
-    is_admin = st.checkbox("Admin login")
-
-    if is_admin:
+    if st.checkbox("Admin login"):
         admin_pw = st.text_input("Admin Password", type="password")
 
         if st.button("Admin Login"):
@@ -173,8 +174,12 @@ if st.session_state.logged_in and st.session_state.role == "user":
         st.subheader("Your Selections")
         for i, choice in enumerate(choices, 1):
             st.write(f"{i}. {choice}")
+
     else:
-        choices = [st.selectbox(f"Choice {i}", [""] + active_weeks, key=f"c{i}") for i in range(1, 11)]
+        choices = [
+            st.selectbox(f"Choice {i}", [""] + active_weeks, key=f"c{i}")
+            for i in range(1, 11)
+        ]
 
         if st.button("Submit Choices"):
             if all(not c for c in choices):
@@ -184,6 +189,7 @@ if st.session_state.logged_in and st.session_state.role == "user":
                     "INSERT INTO submissions VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                     (employee_id, *choices)
                 )
+                conn.commit()
                 st.success("Submitted")
                 st.rerun()
 
@@ -192,36 +198,45 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.title("Admin Panel")
 
-    if st.button("Clear Submissions"):
-        c.execute("DELETE FROM submissions")
+    col1, col2 = st.columns(2)
 
-    if st.button("Clear Results"):
-        c.execute("DELETE FROM results")
+    with col1:
+        if st.button("Clear Submissions"):
+            c.execute("DELETE FROM submissions")
+            conn.commit()
 
-if st.button("Generate Test Submissions"):
-    try:
-        c.execute("DELETE FROM submissions")
+    with col2:
+        if st.button("Clear Results"):
+            c.execute("DELETE FROM results")
+            conn.commit()
 
-        employees = get_employees()
+    # TESTING
+    st.subheader("Testing")
+    st.warning("For Testing Only")
 
-        for _, emp in employees.iterrows():
-            emp_id = emp["employee_id"]
+    if st.button("Generate Test Submissions"):
+        try:
+            c.execute("DELETE FROM submissions")
 
-            num_choices = random.randint(1, 10)
-            choices = random.sample(active_weeks, min(num_choices, len(active_weeks)))
-            choices += [""] * (10 - len(choices))
+            employees = get_employees()
 
-            c.execute(
-                "INSERT INTO submissions VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                (emp_id, *choices)
-            )
+            for _, emp in employees.iterrows():
+                emp_id = emp["employee_id"]
 
-        conn.commit()  # <-- THIS IS THE FIX
+                num_choices = random.randint(1, 10)
+                choices = random.sample(active_weeks, min(num_choices, len(active_weeks)))
+                choices += [""] * (10 - len(choices))
 
-        st.success(f"Test submissions generated for {len(employees)} employees")
+                c.execute(
+                    "INSERT INTO submissions VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    (emp_id, *choices)
+                )
 
-    except Exception as e:
-        st.error(f"Error: {e}")
+            conn.commit()
+            st.success(f"Generated for {len(employees)} employees")
+
+        except Exception as e:
+            st.error(str(e))
 
     # WHO SUBMITTED
     st.subheader("Who Has Submitted")
@@ -237,7 +252,7 @@ if st.button("Generate Test Submissions"):
 
     st.write(view[["first_name", "last_name"]].sort_values(by="last_name"))
 
-    # SUBMISSION DETAILS
+    # DETAILS
     st.subheader("Submission Details")
 
     subs_full = pd.read_sql_query("SELECT * FROM submissions", conn)
@@ -251,16 +266,16 @@ if st.button("Generate Test Submissions"):
     def combine_choices(row):
         vals = []
         for i in range(1, 11):
-            col = f"choice{i}"
-            if col in row and pd.notna(row[col]) and row[col] != "":
-                vals.append(str(row[col]))
+            val = row.get(f"choice{i}")
+            if pd.notna(val) and val != "":
+                vals.append(str(val))
         return ", ".join(vals)
 
     view_full["choices"] = view_full.apply(combine_choices, axis=1)
 
     st.write(view_full[["first_name", "last_name", "choices"]].sort_values(by="last_name"))
 
-    # RUN LOTTERY
+    # LOTTERY
     st.subheader("Run Lottery")
 
     if st.button("Run Lottery"):
@@ -287,8 +302,12 @@ if st.button("Generate Test Submissions"):
                     break
 
         for emp_id in winners:
-            c.execute("UPDATE employees SET win_count = win_count + 1 WHERE employee_id = %s", (emp_id,))
+            c.execute(
+                "UPDATE employees SET win_count = win_count + 1 WHERE employee_id = %s",
+                (emp_id,)
+            )
 
+        conn.commit()
         st.success("Lottery Complete")
 
     # RESULTS
@@ -302,6 +321,9 @@ if st.button("Generate Test Submissions"):
 
     st.write(results_df)
 
-    csv = results_df.to_csv(index=False).encode("utf-8")
-
-    st.download_button("Download Results", csv, "results.csv", "text/csv")
+    st.download_button(
+        "Download Results",
+        results_df.to_csv(index=False).encode("utf-8"),
+        "results.csv",
+        "text/csv"
+    )
