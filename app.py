@@ -7,9 +7,9 @@ import random
 
 ADMIN_PASSWORD = "admin123"
 
-# SUPABASE CONNECTION
+# SUPABASE CONNECTION (pooled)
 conn = psycopg2.connect(
-    "postgresql://postgres:BPApwisl33t@db.ugnxfszbikjuzaklsnji.supabase.co:5432/postgres"
+    "postgresql://postgres.ugnxfszbikjuzaklsnji:BPApwisl33t@aws-1-ca-central-1.pooler.supabase.com:5432/postgres"
 )
 conn.autocommit = True
 c = conn.cursor()
