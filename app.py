@@ -39,7 +39,6 @@ c.execute("""CREATE TABLE IF NOT EXISTS weeks (
     enabled BOOLEAN
 )""")
 
-# HELPERS
 def get_employees():
     df = pd.read_sql_query("SELECT * FROM employees", conn)
     df["employee_id"] = df["employee_id"].astype(str).str.strip()
@@ -239,7 +238,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.markdown("---")
 
-    # WEEKS
+    # WEEKS (FIXED)
     st.subheader("Weeks")
 
     col1, col2 = st.columns(2)
@@ -247,35 +246,27 @@ if st.session_state.logged_in and st.session_state.role == "admin":
     if col1.button("Select All Weeks"):
         c.execute("UPDATE weeks SET enabled=TRUE")
         conn.commit()
-        for k in list(st.session_state.keys()):
-            if k.startswith("week_"):
-                del st.session_state[k]
         st.rerun()
 
     if col2.button("Deselect All Weeks"):
         c.execute("UPDATE weeks SET enabled=FALSE")
         conn.commit()
-        for k in list(st.session_state.keys()):
-            if k.startswith("week_"):
-                del st.session_state[k]
         st.rerun()
 
     weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
 
-    new_states = {}
-
     for _, row in weeks_df.iterrows():
-        new_states[row["week"]] = st.checkbox(
-            row["week"],
-            value=row["enabled"],
-            key=f"week_{row['week']}"
-        )
+        key = f"week_{row['week']}"
+        st.session_state[key] = row["enabled"]
 
-    if st.button("Save Week Changes"):
-        for week, val in new_states.items():
-            c.execute("UPDATE weeks SET enabled=%s WHERE week=%s", (val, week))
-        conn.commit()
-        st.rerun()
+        val = st.checkbox(row["week"], key=key)
+
+        if val != row["enabled"]:
+            c.execute(
+                "UPDATE weeks SET enabled=%s WHERE week=%s",
+                (val, row["week"])
+            )
+            conn.commit()
 
     st.markdown("---")
 
@@ -311,7 +302,6 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.dataframe(res[["first_name","last_name","assigned_week","win_count"]])
 
-    # DOWNLOAD BACK
     st.download_button(
         "Download Results",
         res.to_csv(index=False).encode("utf-8"),
