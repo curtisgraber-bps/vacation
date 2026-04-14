@@ -237,7 +237,29 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         view_full[["first_name", "last_name", "choices"]]
         .sort_values(by="last_name")
     )
+# TEST DATA GENERATOR
+st.subheader("Testing")
 
+st.warning("For Testing Only")
+
+if st.button("Generate Test Submissions"):
+    c.execute("DELETE FROM submissions")
+
+    employees = get_employees()
+
+    for _, emp in employees.iterrows():
+        emp_id = emp["employee_id"]
+
+        num_choices = random.randint(1, 10)
+        choices = random.sample(active_weeks, min(num_choices, len(active_weeks)))
+        choices += [""] * (10 - len(choices))
+
+        c.execute(
+            "INSERT INTO submissions VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (emp_id, *choices)
+        )
+
+    st.success("Test submissions generated")
     # RUN LOTTERY
     st.subheader("Run Lottery")
 
