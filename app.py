@@ -181,6 +181,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.markdown("---")
 
+    # SUBMISSIONS
     st.subheader("Submissions")
 
     subs = pd.read_sql_query("SELECT * FROM submissions", conn)
@@ -198,6 +199,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.markdown("---")
 
+    # EMPLOYEES
     st.subheader("Employees")
 
     edited = st.data_editor(
@@ -271,6 +273,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.markdown("---")
 
+    # WEEKS (FINAL FIX)
     st.subheader("Weeks")
 
     col1, col2 = st.columns(2)
@@ -291,23 +294,22 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         ORDER BY TO_DATE(split_part(week, ' to ', 1), 'YYYY-MM-DD')
     """, conn)
 
-  for _, row in weeks_df.iterrows():
-    key = f"week_{row['week']}"
+    for _, row in weeks_df.iterrows():
+        key = f"week_{row['week']}"
 
-    if key not in st.session_state:
-        st.session_state[key] = row["enabled"]
+        val = st.checkbox(row["week"], value=row["enabled"], key=key)
 
-    val = st.checkbox(row["week"], key=key)
-
-    if val != row["enabled"]:
-        c.execute(
-            "UPDATE weeks SET enabled=%s WHERE week=%s",
-            (val, row["week"])
-        )
-        conn.commit()
+        if val != row["enabled"]:
+            c.execute(
+                "UPDATE weeks SET enabled=%s WHERE week=%s",
+                (val, row["week"])
+            )
+            conn.commit()
+            st.rerun()
 
     st.markdown("---")
 
+    # LOTTERY
     if st.button("Run Lottery", key="run_lottery"):
         c.execute("DELETE FROM results")
 
