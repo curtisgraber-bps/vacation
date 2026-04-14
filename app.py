@@ -152,42 +152,42 @@ if st.session_state.logged_in and st.session_state.role == "admin":
     st.title("Admin Panel")
 
     # --- WEEKS ---
-    st.subheader("Weeks")
+ st.subheader("Weeks")
 
-    col1, col2 = st.columns(2)
-    select_all = col1.button("Select All Weeks", key="select_all")
-    deselect_all = col2.button("Deselect All Weeks", key="deselect_all")
+col1, col2 = st.columns(2)
 
-    if select_all:
-        c.execute("UPDATE weeks SET enabled=TRUE")
-        conn.commit()
-        st.rerun()
+if col1.button("Select All Weeks", key="select_all"):
+    c.execute("UPDATE weeks SET enabled=TRUE")
+    conn.commit()
+    st.rerun()
 
-    if deselect_all:
-        c.execute("UPDATE weeks SET enabled=FALSE")
-        conn.commit()
-        st.rerun()
+if col2.button("Deselect All Weeks", key="deselect_all"):
+    c.execute("UPDATE weeks SET enabled=FALSE")
+    conn.commit()
+    st.rerun()
 
-    st.markdown("---")
+st.markdown("---")
 
-    weeks_df = pd.read_sql_query("""
-        SELECT *
-        FROM weeks
-        ORDER BY TO_DATE(split_part(week, ' to ', 1), 'YYYY-MM-DD')
-    """, conn)
+weeks_df = pd.read_sql_query("""
+    SELECT *
+    FROM weeks
+    ORDER BY TO_DATE(split_part(week, ' to ', 1), 'YYYY-MM-DD')
+""", conn)
 
-    for _, row in weeks_df.iterrows():
-        key = f"week_{row['week']}"
+updates = []
 
-        val = st.checkbox(row["week"], value=row["enabled"], key=key)
+for _, row in weeks_df.iterrows():
+    key = f"week_{row['week']}"
+    val = st.checkbox(row["week"], value=row["enabled"], key=key)
 
-        if val != row["enabled"]:
-            c.execute(
-                "UPDATE weeks SET enabled=%s WHERE week=%s",
-                (val, row["week"])
-            )
-            conn.commit()
-            st.rerun()
+    if val != row["enabled"]:
+        updates.append((val, row["week"]))
+
+# APPLY CHANGES AFTER LOOP
+if updates:
+    for val, week in updates:
+        c.execute("UPDATE weeks SET enabled=%s WHERE week=%s", (val, week))
+    conn.commit()
 
     st.markdown("---")
 
