@@ -257,19 +257,37 @@ if st.session_state.logged_in and st.session_state.role == "admin":
     st.markdown("---")
 
     # SUBMISSIONS
-    st.subheader("Submissions")
+ st.subheader("Submissions")
 
-    subs = pd.read_sql_query("SELECT * FROM submissions", conn)
+subs = pd.read_sql_query("SELECT * FROM submissions", conn)
 
-    if not subs.empty:
-        merged = subs.merge(get_employees(), on="employee_id")
-        merged["choices"] = merged.apply(
-            lambda r: ", ".join([str(r[f"choice{i}"]) for i in range(1, 11) if r[f"choice{i}"]]),
-            axis=1
-        )
-        st.dataframe(merged[["first_name", "last_name", "choices"]])
+if not subs.empty:
+    emps = get_employees()
+    merged = subs.merge(emps, on="employee_id", how="left")
+
+    merged["choices"] = merged.apply(
+        lambda r: ", ".join([str(r[f"choice{i}"]) for i in range(1, 11) if r[f"choice{i}"]]),
+        axis=1
+    )
+
+    st.dataframe(merged[["employee_id", "first_name", "last_name", "choices"]])
 
     st.markdown("---")
+
+    # DELETE SINGLE SUBMISSION
+    st.subheader("Delete Submission")
+
+    ids = merged["employee_id"].tolist()
+    selected_id = st.selectbox("Select employee", ids)
+
+    if st.button("Delete Selected Submission"):
+        c.execute("DELETE FROM submissions WHERE employee_id=%s", (selected_id,))
+        conn.commit()
+        st.success("Submission deleted")
+        st.rerun()
+
+else:
+    st.info("No submissions yet")
 
     # WEEKS
     st.subheader("Weeks")
