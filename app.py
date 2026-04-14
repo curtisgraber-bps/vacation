@@ -214,37 +214,42 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.divider()
 
-st.subheader("Weeks")
+    st.subheader("Weeks")
 
-col1, col2 = st.columns(2)
+    col1, col2 = st.columns(2)
 
-if col1.button("Select All Weeks", key="select_all"):
-    c.execute("UPDATE weeks SET enabled=TRUE")
-    conn.commit()
-    st.rerun()
+    if col1.button("Select All Weeks", key="select_all"):
+        c.execute("UPDATE weeks SET enabled=TRUE")
+        conn.commit()
+        for k in list(st.session_state.keys()):
+            if k.startswith("week_"):
+                del st.session_state[k]
+        st.rerun()
 
-if col2.button("Deselect All Weeks", key="deselect_all"):
-    c.execute("UPDATE weeks SET enabled=FALSE")
-    conn.commit()
-    st.rerun()
+    if col2.button("Deselect All Weeks", key="deselect_all"):
+        c.execute("UPDATE weeks SET enabled=FALSE")
+        conn.commit()
+        for k in list(st.session_state.keys()):
+            if k.startswith("week_"):
+                del st.session_state[k]
+        st.rerun()
 
-weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
+    weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
 
-new_states = {}
+    new_states = {}
 
-for _, row in weeks_df.iterrows():
-    new_states[row["week"]] = st.checkbox(
-        row["week"],
-        value=row["enabled"],
-        key=f"week_{row['week']}"
-    )
+    for _, row in weeks_df.iterrows():
+        new_states[row["week"]] = st.checkbox(
+            row["week"],
+            value=row["enabled"],
+            key=f"week_{row['week']}"
+        )
 
-# APPLY CHANGES ONCE
-if st.button("Save Week Changes", key="save_weeks"):
-    for week, val in new_states.items():
-        c.execute("UPDATE weeks SET enabled=%s WHERE week=%s", (val, week))
-    conn.commit()
-    st.rerun()
+    if st.button("Save Week Changes", key="save_weeks"):
+        for week, val in new_states.items():
+            c.execute("UPDATE weeks SET enabled=%s WHERE week=%s", (val, week))
+        conn.commit()
+        st.rerun()
 
     st.divider()
 
