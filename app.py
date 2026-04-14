@@ -186,12 +186,37 @@ if st.session_state.logged_in and st.session_state.role == "admin":
     st.markdown("---")
 
     st.subheader("Employees")
+
     emps = get_employees()
-    st.dataframe(emps[["employee_id","first_name","last_name","hire_date","win_count"]])
+
+    edited = st.data_editor(
+        emps[["employee_id","first_name","last_name","hire_date","win_count"]],
+        use_container_width=True,
+        num_rows="dynamic",
+        key="emp_editor"
+    )
+
+    if st.button("Save Employee Changes"):
+        for _, row in edited.iterrows():
+            c.execute(
+                """UPDATE employees 
+                   SET first_name=%s, last_name=%s, hire_date=%s, win_count=%s 
+                   WHERE employee_id=%s""",
+                (
+                    row["first_name"],
+                    row["last_name"],
+                    row["hire_date"],
+                    int(row["win_count"]),
+                    row["employee_id"]
+                )
+            )
+        conn.commit()
+        st.success("Saved")
 
     st.markdown("---")
 
     st.subheader("Weeks")
+
     weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
 
     for _, row in weeks_df.iterrows():
@@ -203,6 +228,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
     st.markdown("---")
 
     st.subheader("Submission Details")
+
     subs_full = pd.read_sql_query("SELECT * FROM submissions", conn)
     full = subs_full.merge(emps, on="employee_id", how="left")
 
@@ -238,10 +264,9 @@ if st.session_state.logged_in and st.session_state.role == "admin":
                     c.execute("INSERT INTO results VALUES (%s,%s)", (emp["employee_id"], ch))
                     break
 
-        # FIXED WIN COUNT UPDATE
         for w in winners:
             c.execute(
-                "UPDATE employees SET win_count = COALESCE(win_count,0) + 1 WHERE employee_id = %s",
+                "UPDATE employees SET win_count = COALESCE(win_count,0) + 1 WHERE employee_id=%s",
                 (str(w).strip(),)
             )
 
