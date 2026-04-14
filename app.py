@@ -273,48 +273,47 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.markdown("---")
 
-    # WEEKS (FINAL FIX)
-st.subheader("Weeks")
+    # WEEKS FINAL
+    st.subheader("Weeks")
 
-col1, col2 = st.columns(2)
+    col1, col2 = st.columns(2)
 
-if col1.button("Select All Weeks", key="select_all"):
-    c.execute("UPDATE weeks SET enabled=TRUE")
-    conn.commit()
-    for k in list(st.session_state.keys()):
-        if k.startswith("week_"):
-            del st.session_state[k]
-    st.experimental_rerun()
-
-if col2.button("Deselect All Weeks", key="deselect_all"):
-    c.execute("UPDATE weeks SET enabled=FALSE")
-    conn.commit()
-    for k in list(st.session_state.keys()):
-        if k.startswith("week_"):
-            del st.session_state[k]
-    st.experimental_rerun()
-
-weeks_df = pd.read_sql_query("""
-    SELECT *
-    FROM weeks
-    ORDER BY TO_DATE(split_part(week, ' to ', 1), 'YYYY-MM-DD')
-""", conn)
-
-for _, row in weeks_df.iterrows():
-    key = f"week_{row['week']}"
-
-    val = st.checkbox(row["week"], value=row["enabled"], key=key)
-
-    if val != row["enabled"]:
-        c.execute(
-            "UPDATE weeks SET enabled=%s WHERE week=%s",
-            (val, row["week"])
-        )
+    if col1.button("Select All Weeks", key="select_all"):
+        c.execute("UPDATE weeks SET enabled=TRUE")
         conn.commit()
         for k in list(st.session_state.keys()):
             if k.startswith("week_"):
                 del st.session_state[k]
-        st.experimental_rerun()
+        st.rerun()
+
+    if col2.button("Deselect All Weeks", key="deselect_all"):
+        c.execute("UPDATE weeks SET enabled=FALSE")
+        conn.commit()
+        for k in list(st.session_state.keys()):
+            if k.startswith("week_"):
+                del st.session_state[k]
+        st.rerun()
+
+    weeks_df = pd.read_sql_query("""
+        SELECT *
+        FROM weeks
+        ORDER BY TO_DATE(split_part(week, ' to ', 1), 'YYYY-MM-DD')
+    """, conn)
+
+    for _, row in weeks_df.iterrows():
+        key = f"week_{row['week']}"
+        val = st.checkbox(row["week"], value=row["enabled"], key=key)
+
+        if val != row["enabled"]:
+            c.execute(
+                "UPDATE weeks SET enabled=%s WHERE week=%s",
+                (val, row["week"])
+            )
+            conn.commit()
+            for k in list(st.session_state.keys()):
+                if k.startswith("week_"):
+                    del st.session_state[k]
+            st.rerun()
 
     st.markdown("---")
 
