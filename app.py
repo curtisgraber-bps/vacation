@@ -14,7 +14,7 @@ conn = psycopg2.connect(
 conn.autocommit = True
 c = conn.cursor()
 
-# TABLES (will already exist in Supabase, harmless if rerun)
+# TABLES
 c.execute("""
 CREATE TABLE IF NOT EXISTS employees (
     employee_id TEXT PRIMARY KEY,
@@ -79,7 +79,8 @@ def generate_weeks():
     return [f"{start + datetime.timedelta(weeks=i)} to {start + datetime.timedelta(weeks=i, days=7)}" for i in range(52)]
 
 # INIT WEEKS
-if pd.read_sql_query("SELECT COUNT(*) as c FROM weeks", conn)["c"][0] == 0:
+count = pd.read_sql_query("SELECT COUNT(*) as c FROM weeks", conn)["c"][0]
+if count == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (%s, %s)", (w, True))
 
@@ -161,9 +162,7 @@ if st.session_state.logged_in and st.session_state.role == "user":
 
     employee_id = st.session_state.user_id
 
-    existing = c.execute(
-        "SELECT * FROM submissions WHERE employee_id = %s", (employee_id,)
-    )
+    c.execute("SELECT * FROM submissions WHERE employee_id = %s", (employee_id,))
     existing = c.fetchone()
 
     if existing:
@@ -218,6 +217,9 @@ if st.session_state.logged_in and st.session_state.role == "admin":
                     break
 
         for emp_id in winners:
-            c.execute("UPDATE employees SET win_count = win_count + 1 WHERE employee_id = %s", (emp_id,))
+            c.execute(
+                "UPDATE employees SET win_count = win_count + 1 WHERE employee_id = %s",
+                (emp_id,)
+            )
 
         st.success("Lottery Complete")
