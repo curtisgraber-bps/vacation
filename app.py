@@ -39,6 +39,7 @@ c.execute("""CREATE TABLE IF NOT EXISTS weeks (
     enabled BOOLEAN
 )""")
 
+# HELPERS
 def get_employees():
     df = pd.read_sql_query("SELECT * FROM employees", conn)
     df["employee_id"] = df["employee_id"].astype(str).str.strip()
@@ -151,69 +152,38 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.title("Admin Panel")
 
-    # --- WEEKS ---
- st.subheader("Weeks")
+    st.subheader("Weeks")
 
-col1, col2 = st.columns(2)
+    col1, col2 = st.columns(2)
 
-if col1.button("Select All Weeks", key="select_all"):
-    c.execute("UPDATE weeks SET enabled=TRUE")
-    conn.commit()
-    st.rerun()
+    if col1.button("Select All Weeks", key="select_all"):
+        c.execute("UPDATE weeks SET enabled=TRUE")
+        conn.commit()
+        st.rerun()
 
-if col2.button("Deselect All Weeks", key="deselect_all"):
-    c.execute("UPDATE weeks SET enabled=FALSE")
-    conn.commit()
-    st.rerun()
-
-st.markdown("---")
-
-weeks_df = pd.read_sql_query("""
-    SELECT *
-    FROM weeks
-    ORDER BY TO_DATE(split_part(week, ' to ', 1), 'YYYY-MM-DD')
-""", conn)
-
-updates = []
-
-for _, row in weeks_df.iterrows():
-    key = f"week_{row['week']}"
-    val = st.checkbox(row["week"], value=row["enabled"], key=key)
-
-    if val != row["enabled"]:
-        updates.append((val, row["week"]))
-
-# APPLY CHANGES AFTER LOOP
-if updates:
-    for val, week in updates:
-        c.execute("UPDATE weeks SET enabled=%s WHERE week=%s", (val, week))
-    conn.commit()
+    if col2.button("Deselect All Weeks", key="deselect_all"):
+        c.execute("UPDATE weeks SET enabled=FALSE")
+        conn.commit()
+        st.rerun()
 
     st.markdown("---")
 
-    # --- LOTTERY ---
-    if st.button("Run Lottery", key="run_lottery"):
-        c.execute("DELETE FROM results")
+    weeks_df = pd.read_sql_query("""
+        SELECT *
+        FROM weeks
+        ORDER BY TO_DATE(split_part(week, ' to ', 1), 'YYYY-MM-DD')
+    """, conn)
 
-        emps = get_employees()
-        subs = pd.read_sql_query("SELECT * FROM submissions", conn)
+    updates = []
 
-        emps = emps[emps["employee_id"].isin(subs["employee_id"])]
-        emps = emps.sort_values(by=["win_count", "hire_date"])
+    for _, row in weeks_df.iterrows():
+        key = f"week_{row['week']}"
+        val = st.checkbox(row["week"], value=row["enabled"], key=key)
 
-        taken = set()
+        if val != row["enabled"]:
+            updates.append((val, row["week"]))
 
-        for _, emp in emps.iterrows():
-            sub = subs[subs["employee_id"] == emp["employee_id"]].iloc[0]
-
-            for i in range(1, 11):
-                ch = sub[f"choice{i}"]
-                if ch and ch not in taken:
-                    taken.add(ch)
-                    c.execute("INSERT INTO results VALUES (%s,%s)", (emp["employee_id"], ch))
-                    c.execute("UPDATE employees SET win_count = win_count + 1 WHERE employee_id=%s",
-                              (emp["employee_id"],))
-                    break
-
+    if updates:
+        for val, week in updates:
+            c.execute("UPDATE weeks SET enabled=%s WHERE week=%s", (val, week))
         conn.commit()
-        st.rerun()
