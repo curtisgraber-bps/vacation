@@ -95,10 +95,8 @@ if not st.session_state.logged_in:
             if not emp["password_hash"] or pd.isna(emp["password_hash"]):
                 pw = st.text_input("Create Password", type="password")
                 if st.button("Set Password"):
-                    c.execute(
-                        "UPDATE employees SET password_hash=%s WHERE employee_id=%s",
-                        (hash_pw(pw), login_id)
-                    )
+                    c.execute("UPDATE employees SET password_hash=%s WHERE employee_id=%s",
+                              (hash_pw(pw), login_id))
                     conn.commit()
             else:
                 pw = st.text_input("Password", type="password")
@@ -185,74 +183,27 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.markdown("---")
 
-    # EMPLOYEES
-    st.subheader("Employees")
+    # SUBMISSIONS
+    st.subheader("Submissions")
 
+    subs = pd.read_sql_query("SELECT * FROM submissions", conn)
     emps = get_employees()
-    edited = st.data_editor(emps, use_container_width=True)
 
-    if st.button("Save Employee Changes"):
-        edited_df = edited.set_index("employee_id")
+    if not subs.empty:
+        full = subs.merge(emps, on="employee_id", how="left")
 
-        for emp_id, row in edited_df.iterrows():
-            c.execute(
-                """UPDATE employees SET
-                first_name=%s,
-                last_name=%s,
-                hire_date=%s,
-                win_count=%s
-                WHERE employee_id=%s""",
-                (
-                    row["first_name"],
-                    row["last_name"],
-                    row["hire_date"],
-                    int(row["win_count"]),
-                    emp_id
-                )
-            )
+        def combine(r):
+            return ", ".join([
+                str(r[f"choice{i}"])
+                for i in range(1, 11)
+                if r[f"choice{i}"]
+            ])
 
-        conn.commit()
-        st.rerun()
+        full["choices"] = full.apply(combine, axis=1)
 
-    st.markdown("---")
-
-    # ADD EMPLOYEE
-    st.subheader("Add Employee")
-
-    new_id = st.text_input("New ID")
-    new_fn = st.text_input("First Name")
-    new_ln = st.text_input("Last Name")
-    new_hd = st.date_input("Hire Date")
-
-    if st.button("Add Employee"):
-        c.execute(
-            "INSERT INTO employees VALUES (%s,%s,%s,%s,%s,%s)",
-            (new_id.strip(), new_fn, new_ln, new_hd, 0, None)
-        )
-        conn.commit()
-        st.rerun()
-
-    st.markdown("---")
-
-    # RESET PASSWORD
-    st.subheader("Reset Password")
-
-    rid = st.text_input("Employee ID to reset")
-
-    if st.button("Reset Password"):
-        if not rid.strip():
-            st.error("Enter an Employee ID")
-        else:
-            c.execute(
-                "UPDATE employees SET password_hash=NULL WHERE employee_id=%s",
-                (rid.strip(),)
-            )
-            conn.commit()
-
-            if c.rowcount == 0:
-                st.error("Employee not found")
-            else:
-                st.success("Password reset")
+        st.dataframe(full[["first_name", "last_name", "choices"]])
+    else:
+        st.info("No submissions yet")
 
     st.markdown("---")
 
