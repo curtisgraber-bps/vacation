@@ -7,7 +7,7 @@ import random
 
 ADMIN_PASSWORD = "admin123"
 
-# SUPABASE CONNECTION (pooled)
+# SUPABASE CONNECTION
 conn = psycopg2.connect(
     "postgresql://postgres.ugnxfszbikjuzaklsnji:BPApwisl33t@aws-1-ca-central-1.pooler.supabase.com:5432/postgres"
 )
@@ -198,6 +198,29 @@ if st.session_state.logged_in and st.session_state.role == "admin":
     if st.button("Clear Results"):
         c.execute("DELETE FROM results")
 
+    # TESTING
+    st.subheader("Testing")
+    st.warning("For Testing Only")
+
+    if st.button("Generate Test Submissions"):
+        c.execute("DELETE FROM submissions")
+
+        employees = get_employees()
+
+        for _, emp in employees.iterrows():
+            emp_id = emp["employee_id"]
+
+            num_choices = random.randint(1, 10)
+            choices = random.sample(active_weeks, min(num_choices, len(active_weeks)))
+            choices += [""] * (10 - len(choices))
+
+            c.execute(
+                "INSERT INTO submissions VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (emp_id, *choices)
+            )
+
+        st.success("Test submissions generated")
+
     # WHO SUBMITTED
     st.subheader("Who Has Submitted")
 
@@ -233,33 +256,8 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     view_full["choices"] = view_full.apply(combine_choices, axis=1)
 
-    st.write(
-        view_full[["first_name", "last_name", "choices"]]
-        .sort_values(by="last_name")
-    )
-# TEST DATA GENERATOR
-st.subheader("Testing")
+    st.write(view_full[["first_name", "last_name", "choices"]].sort_values(by="last_name"))
 
-st.warning("For Testing Only")
-
-if st.button("Generate Test Submissions"):
-    c.execute("DELETE FROM submissions")
-
-    employees = get_employees()
-
-    for _, emp in employees.iterrows():
-        emp_id = emp["employee_id"]
-
-        num_choices = random.randint(1, 10)
-        choices = random.sample(active_weeks, min(num_choices, len(active_weeks)))
-        choices += [""] * (10 - len(choices))
-
-        c.execute(
-            "INSERT INTO submissions VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            (emp_id, *choices)
-        )
-
-    st.success("Test submissions generated")
     # RUN LOTTERY
     st.subheader("Run Lottery")
 
@@ -287,14 +285,11 @@ if st.button("Generate Test Submissions"):
                     break
 
         for emp_id in winners:
-            c.execute(
-                "UPDATE employees SET win_count = win_count + 1 WHERE employee_id = %s",
-                (emp_id,)
-            )
+            c.execute("UPDATE employees SET win_count = win_count + 1 WHERE employee_id = %s", (emp_id,))
 
         st.success("Lottery Complete")
 
-    # RESULTS + DOWNLOAD
+    # RESULTS
     results_df = pd.read_sql_query("SELECT * FROM results", conn)
 
     results_df = results_df.merge(
@@ -307,9 +302,4 @@ if st.button("Generate Test Submissions"):
 
     csv = results_df.to_csv(index=False).encode("utf-8")
 
-    st.download_button(
-        "Download Results",
-        csv,
-        "results.csv",
-        "text/csv"
-    )
+    st.download_button("Download Results", csv, "results.csv", "text/csv")
