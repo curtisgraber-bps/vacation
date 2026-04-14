@@ -105,7 +105,6 @@ if not st.session_state.logged_in:
                     st.session_state.user_id = login_id
                     st.rerun()
 
-    # SPACING ADDED
     st.markdown("<br><br>", unsafe_allow_html=True)
 
     if st.checkbox("Admin login"):
@@ -199,7 +198,6 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         key="emp_editor"
     )
 
-    # FIXED SAVE LOGIC
     if st.button("Save Employee Changes"):
 
         original = get_employees().set_index("employee_id")
@@ -237,6 +235,20 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         conn.commit()
         st.success(f"{updates} employees updated")
         st.rerun()
+
+    # RESET PASSWORD (ADDED BACK)
+    st.markdown("---")
+    st.subheader("Reset Password")
+
+    col1, col2 = st.columns(2)
+    reset_id = col1.text_input("Employee ID")
+    if col2.button("Reset Password"):
+        c.execute(
+            "UPDATE employees SET password_hash = NULL WHERE employee_id = %s",
+            (reset_id,)
+        )
+        conn.commit()
+        st.success("Password reset")
 
     st.markdown("---")
 
