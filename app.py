@@ -13,6 +13,7 @@ conn = psycopg2.connect(
 conn.autocommit = True
 c = conn.cursor()
 
+# TABLES
 c.execute("""CREATE TABLE IF NOT EXISTS employees (
     employee_id TEXT PRIMARY KEY,
     first_name TEXT,
@@ -38,6 +39,7 @@ c.execute("""CREATE TABLE IF NOT EXISTS weeks (
     enabled BOOLEAN
 )""")
 
+# HELPERS
 def get_employees():
     df = pd.read_sql_query("SELECT * FROM employees", conn)
     df["employee_id"] = df["employee_id"].astype(str).str.strip()
@@ -62,15 +64,18 @@ def generate_weeks():
 def get_active_weeks():
     return pd.read_sql_query("SELECT week FROM weeks WHERE enabled = TRUE", conn)["week"].tolist()
 
+# INIT
 if pd.read_sql_query("SELECT COUNT(*) c FROM weeks", conn)["c"][0] == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (%s,%s)", (w, True))
 
+# SESSION
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.role = None
     st.session_state.user_id = None
 
+# LOGIN
 if not st.session_state.logged_in:
     st.title("Login")
 
@@ -106,11 +111,13 @@ if not st.session_state.logged_in:
             st.session_state.role = "admin"
             st.rerun()
 
+# LOGOUT
 if st.session_state.logged_in:
     if st.button("Logout"):
         st.session_state.clear()
         st.rerun()
 
+# USER
 if st.session_state.logged_in and st.session_state.role == "user":
     st.title("Vacation Scheduler")
 
@@ -134,6 +141,7 @@ if st.session_state.logged_in and st.session_state.role == "user":
             conn.commit()
             st.rerun()
 
+# ADMIN
 if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.title("Admin Panel")
@@ -160,6 +168,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.markdown("---")
 
+    # SUBMISSIONS
     st.subheader("Submissions")
 
     subs = pd.read_sql_query("SELECT * FROM submissions", conn)
@@ -177,6 +186,7 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.markdown("---")
 
+    # EMPLOYEES
     st.subheader("Employees")
 
     edited = st.data_editor(
@@ -229,6 +239,47 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.markdown("---")
 
+    # WEEKS
+    st.subheader("Weeks")
+
+    col1, col2 = st.columns(2)
+
+    if col1.button("Select All Weeks"):
+        c.execute("UPDATE weeks SET enabled=TRUE")
+        conn.commit()
+        for k in list(st.session_state.keys()):
+            if k.startswith("week_"):
+                del st.session_state[k]
+        st.rerun()
+
+    if col2.button("Deselect All Weeks"):
+        c.execute("UPDATE weeks SET enabled=FALSE")
+        conn.commit()
+        for k in list(st.session_state.keys()):
+            if k.startswith("week_"):
+                del st.session_state[k]
+        st.rerun()
+
+    weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
+
+    new_states = {}
+
+    for _, row in weeks_df.iterrows():
+        new_states[row["week"]] = st.checkbox(
+            row["week"],
+            value=row["enabled"],
+            key=f"week_{row['week']}"
+        )
+
+    if st.button("Save Week Changes"):
+        for week, val in new_states.items():
+            c.execute("UPDATE weeks SET enabled=%s WHERE week=%s", (val, week))
+        conn.commit()
+        st.rerun()
+
+    st.markdown("---")
+
+    # LOTTERY
     if st.button("Run Lottery"):
         c.execute("DELETE FROM results")
 
@@ -259,3 +310,11 @@ if st.session_state.logged_in and st.session_state.role == "admin":
     res = res.merge(get_employees(), on="employee_id")
 
     st.dataframe(res[["first_name","last_name","assigned_week","win_count"]])
+
+    # DOWNLOAD BACK
+    st.download_button(
+        "Download Results",
+        res.to_csv(index=False).encode("utf-8"),
+        "results.csv",
+        "text/csv"
+    )
