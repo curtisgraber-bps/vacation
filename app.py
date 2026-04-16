@@ -99,10 +99,8 @@ if not st.session_state.logged_in:
             if not emp["password_hash"] or pd.isna(emp["password_hash"]):
                 pw = st.text_input("Create Password", type="password")
                 if st.button("Set Password"):
-                    c.execute(
-                        "UPDATE employees SET password_hash=%s WHERE employee_id=%s",
-                        (hash_pw(pw), login_id)
-                    )
+                    c.execute("UPDATE employees SET password_hash=%s WHERE employee_id=%s",
+                              (hash_pw(pw), login_id))
                     conn.commit()
             else:
                 pw = st.text_input("Password", type="password")
@@ -161,7 +159,6 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.title("Admin Panel")
 
-    # CONTROLS
     col1, col2, col3 = st.columns(3)
 
     if col1.button("Clear Submissions"):
@@ -186,78 +183,31 @@ if st.session_state.logged_in and st.session_state.role == "admin":
 
     st.markdown("---")
 
-    # EMPLOYEES (FIXED EDITING)
+    # EMPLOYEES
     st.subheader("Employees")
 
     if "emp_edit" not in st.session_state:
         st.session_state.emp_edit = get_employees()
 
-    edited = st.data_editor(
-        st.session_state.emp_edit,
-        use_container_width=True,
-        num_rows="dynamic",
-        key="emp_editor"
-    )
-
+    edited = st.data_editor(st.session_state.emp_edit, use_container_width=True)
     st.session_state.emp_edit = edited
 
     if st.button("Save Employee Changes"):
-        for _, row in st.session_state.emp_edit.iterrows():
+        for _, row in edited.iterrows():
             c.execute("""
                 UPDATE employees SET
-                    first_name=%s,
-                    last_name=%s,
-                    hire_date=%s,
-                    win_count=%s
+                first_name=%s,
+                last_name=%s,
+                hire_date=%s,
+                win_count=%s
                 WHERE employee_id=%s
-            """, (
-                row["first_name"],
-                row["last_name"],
-                row["hire_date"],
-                int(row["win_count"]),
-                row["employee_id"]
-            ))
-
-        conn.commit()
-        st.success("Saved")
-        st.rerun()
-
-    st.markdown("---")
-
-    # ADD EMPLOYEE
-    st.subheader("Add Employee")
-
-    new_id = st.text_input("New ID")
-    new_fn = st.text_input("First Name")
-    new_ln = st.text_input("Last Name")
-    new_hd = st.date_input("Hire Date")
-
-    if st.button("Add Employee"):
-        c.execute(
-            "INSERT INTO employees VALUES (%s,%s,%s,%s,%s,%s)",
-            (new_id.strip(), new_fn, new_ln, new_hd, 0, None)
-        )
+            """, (row["first_name"], row["last_name"], row["hire_date"], int(row["win_count"]), row["employee_id"]))
         conn.commit()
         st.rerun()
 
     st.markdown("---")
 
-    # RESET PASSWORD
-    st.subheader("Reset Password")
-
-    rid = st.text_input("Employee ID to reset")
-
-    if st.button("Reset Password"):
-        if not rid.strip():
-            st.error("Enter an Employee ID")
-        else:
-            c.execute("UPDATE employees SET password_hash=NULL WHERE employee_id=%s", (rid.strip(),))
-            conn.commit()
-            st.success("Password reset")
-
-    st.markdown("---")
-
-    # SUBMISSIONS + DELETE
+    # SUBMISSIONS
     st.subheader("Submissions")
 
     subs = pd.read_sql_query("SELECT * FROM submissions", conn)
@@ -269,7 +219,14 @@ if st.session_state.logged_in and st.session_state.role == "admin":
             axis=1
         )
 
-        st.dataframe(merged[["employee_id", "first_name", "last_name", "choices"]])
+        st.dataframe(merged[["employee_id","first_name","last_name","choices"]])
+
+        st.download_button(
+            "Download Submissions",
+            merged.to_csv(index=False).encode("utf-8"),
+            "submissions.csv",
+            "text/csv"
+        )
 
         selected = st.selectbox("Delete submission for", merged["employee_id"])
 
