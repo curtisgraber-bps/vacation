@@ -3,7 +3,7 @@ import pandas as pd
 import psycopg2
 import datetime
 import bcrypt
-
+import random
 
 ADMIN_PASSWORD = "admin123"
 
@@ -100,6 +100,7 @@ if not st.session_state.logged_in:
                     c.execute("UPDATE employees SET password_hash=%s WHERE employee_id=%s",
                               (hash_pw(pw), login_id))
                     conn.commit()
+                    st.success("Password set. Please log in.")
             else:
                 pw = st.text_input("Password", type="password")
                 if st.button("Login"):
@@ -130,11 +131,7 @@ if st.session_state.logged_in and st.session_state.role == "user":
     weeks = get_active_weeks()
     eid = st.session_state.user_id
 
-    existing = pd.read_sql_query(
-        "SELECT * FROM submissions WHERE employee_id=%s",
-        conn,
-        params=(eid,)
-    )
+    existing = pd.read_sql_query("SELECT * FROM submissions WHERE employee_id=%s", conn, params=(eid,))
 
     if not existing.empty:
         row = existing.iloc[0]
@@ -145,10 +142,8 @@ if st.session_state.logged_in and st.session_state.role == "user":
         choices = [st.selectbox(f"Choice {i}", [""] + weeks, key=f"c{i}") for i in range(1, 11)]
 
         if st.button("Submit"):
-            c.execute(
-                "INSERT INTO submissions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (eid, *choices)
-            )
+            c.execute("INSERT INTO submissions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                      (eid, *choices))
             conn.commit()
             st.rerun()
 
@@ -172,10 +167,8 @@ if st.session_state.logged_in and st.session_state.role == "admin":
         for _, emp in emps.iterrows():
             choices = random.sample(weeks, min(10, len(weeks)))
             choices += [""] * (10 - len(choices))
-            c.execute(
-                "INSERT INTO submissions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (emp["employee_id"], *choices)
-            )
+            c.execute("INSERT INTO submissions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                      (emp["employee_id"], *choices))
 
     conn.commit()
 
@@ -202,6 +195,38 @@ if st.session_state.logged_in and st.session_state.role == "admin":
             """, (row["first_name"], row["last_name"], row["hire_date"], int(row["win_count"]), row["employee_id"]))
         conn.commit()
         st.rerun()
+
+    st.markdown("---")
+
+    # ADD EMPLOYEE
+    st.subheader("Add Employee")
+
+    new_id = st.text_input("New ID")
+    new_fn = st.text_input("First Name")
+    new_ln = st.text_input("Last Name")
+    new_hd = st.date_input("Hire Date")
+
+    if st.button("Add Employee"):
+        c.execute("INSERT INTO employees VALUES (%s,%s,%s,%s,%s,%s)",
+                  (new_id.strip(), new_fn, new_ln, new_hd, 0, None))
+        conn.commit()
+        st.success("Employee added")
+        st.rerun()
+
+    st.markdown("---")
+
+    # RESET PASSWORD
+    st.subheader("Reset Password")
+
+    rid = st.text_input("Employee ID to reset")
+
+    if st.button("Reset Password"):
+        if not rid.strip():
+            st.error("Enter an Employee ID")
+        else:
+            c.execute("UPDATE employees SET password_hash=NULL WHERE employee_id=%s", (rid.strip(),))
+            conn.commit()
+            st.success("Password reset")
 
     st.markdown("---")
 
