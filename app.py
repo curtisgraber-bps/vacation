@@ -1,4 +1,5 @@
-import streamlit as st
+st.write("DB_URL exists:", "DB_URL" in st.secrets)
+st.write(st.secrets["DB_URL"][:30])import streamlit as st
 import pandas as pd
 import psycopg2
 import datetime
