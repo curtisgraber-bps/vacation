@@ -64,7 +64,7 @@ if pd.read_sql_query("SELECT COUNT(*) c FROM weeks", conn)["c"][0] == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (%s,%s)", (w, True))
 
-# ---------- RESET HANDLER ----------
+# ---------- RESET ----------
 params = st.query_params
 if "token" in params:
     token = params["token"]
@@ -145,7 +145,6 @@ if not st.session_state.user:
         )
         conn.commit()
 
-        st.write("Reset link:")
         st.code(f"https://bpa-wellness.streamlit.app/?token={token}")
 
     if st.checkbox("Admin login"):
@@ -167,18 +166,46 @@ if st.session_state.user and st.session_state.role == "user":
     st.title("Vacation Scheduler")
 
     email = st.session_state.user["email"]
-
     weeks = get_active_weeks()
-    choices = [st.selectbox(f"Choice {i}", [""] + weeks, key=f"c{i}") for i in range(1, 11)]
 
-    if st.button("Submit"):
-        c.execute("DELETE FROM submissions WHERE employee_id=%s", (email,))
+    existing = pd.read_sql_query(
+        "SELECT * FROM submissions WHERE employee_id=%s",
+        conn,
+        params=(email,)
+    )
+
+    default_choices = [""] * 10
+    if not existing.empty:
+        row = existing.iloc[0]
+        default_choices = [row[f"choice{i}"] or "" for i in range(1, 11)]
+        st.info("You have already submitted. You can update your choices.")
+
+    choices = []
+    for i in range(1, 11):
+        idx = weeks.index(default_choices[i-1]) + 1 if default_choices[i-1] in weeks else 0
+        choice = st.selectbox(f"Choice {i}", [""] + weeks, index=idx, key=f"c{i}")
+        choices.append(choice)
+
+    if st.button("Save Choices"):
         c.execute(
-            "INSERT INTO submissions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            """
+            INSERT INTO submissions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (employee_id) DO UPDATE SET
+                choice1=EXCLUDED.choice1,
+                choice2=EXCLUDED.choice2,
+                choice3=EXCLUDED.choice3,
+                choice4=EXCLUDED.choice4,
+                choice5=EXCLUDED.choice5,
+                choice6=EXCLUDED.choice6,
+                choice7=EXCLUDED.choice7,
+                choice8=EXCLUDED.choice8,
+                choice9=EXCLUDED.choice9,
+                choice10=EXCLUDED.choice10
+            """,
             (email, *choices)
         )
         conn.commit()
-        st.success("Submitted")
+        st.success("Saved")
 
 # ---------- ADMIN ----------
 if st.session_state.user and st.session_state.role == "admin":
