@@ -9,7 +9,6 @@ ADMIN_PASSWORD = "admin123"
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-REDIRECT_URL = "https://bpa-wellness.streamlit.app"
 
 conn = psycopg2.connect(st.secrets["DB_URL"])
 conn.autocommit = True
@@ -58,52 +57,6 @@ if pd.read_sql_query("SELECT COUNT(*) c FROM weeks", conn)["c"][0] == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (%s,%s)", (w, True))
 
-# ---------- PASSWORD RESET (OTP FLOW) ----------
-params = st.query_params
-
-if "token" in params and params.get("type") == "recovery":
-    st.title("Reset Password")
-
-    new_password = st.text_input("New Password", type="password")
-
-    if st.button("Set Password"):
-        verify = requests.post(
-            f"{SUPABASE_URL}/auth/v1/verify",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "type": "recovery",
-                "token": params["token"]
-            }
-        )
-
-        if verify.status_code == 200:
-            access_token = verify.json()["access_token"]
-
-            update = requests.put(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={
-                    "apikey": SUPABASE_KEY,
-                    "Authorization": f"Bearer {access_token}",
-                    "Content-Type": "application/json"
-                },
-                json={"password": new_password}
-            )
-
-            if update.status_code == 200:
-                st.success("Password updated")
-            else:
-                st.error("Update failed")
-                st.write(update.text)
-        else:
-            st.error("Invalid or expired link")
-            st.write(verify.text)
-
-    st.stop()
-
 # ---------- SESSION ----------
 if "user" not in st.session_state:
     st.session_state.user = None
@@ -142,19 +95,15 @@ if not st.session_state.user:
 
     if st.button("Forgot Password"):
         requests.post(
-            f"{SUPABASE_URL}/auth/v1/otp",
+            f"{SUPABASE_URL}/auth/v1/recover",
             headers={
                 "apikey": SUPABASE_KEY,
                 "Authorization": f"Bearer {SUPABASE_KEY}",
                 "Content-Type": "application/json"
             },
-            json={
-                "email": email,
-                "type": "recovery",
-                "redirect_to": REDIRECT_URL
-            }
+            json={"email": email}
         )
-        st.success("Reset email sent")
+        st.success("Reset email sent. Check your inbox.")
 
     if st.checkbox("Admin login"):
         pw = st.text_input("Admin Password", type="password")
