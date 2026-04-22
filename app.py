@@ -104,11 +104,14 @@ if not st.session_state.user:
     if st.button("Forgot Password"):
         res = requests.post(
             f"{SUPABASE_URL}/auth/v1/recover",
-            headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json"
+            },
             json={"email": email}
         )
-        st.write("STATUS:", res.status_code)
-        st.write("RESPONSE:", res.text)
+        st.write(res.status_code, res.text)
 
     if st.checkbox("Admin login"):
         pw = st.text_input("Admin Password", type="password")
@@ -196,7 +199,6 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.markdown("---")
 
-    # EMPLOYEES
     st.subheader("Employees")
     emps = get_employees()
     st.dataframe(emps)
@@ -213,12 +215,10 @@ if st.session_state.user and st.session_state.role == "admin":
             (new_id.strip(), new_fn, new_ln, new_hd, 0)
         )
         conn.commit()
-        st.success("Added")
         st.rerun()
 
     st.markdown("---")
 
-    # SUBMISSIONS
     st.subheader("Submissions")
 
     subs = pd.read_sql_query("SELECT * FROM submissions", conn)
@@ -238,36 +238,30 @@ if st.session_state.user and st.session_state.role == "admin":
             conn.commit()
             st.rerun()
 
-    else:
-        st.info("No submissions")
+    st.markdown("---")
+
+    st.subheader("Reset Password")
+
+    reset_email = st.text_input("User Email")
+
+    if st.button("Send Reset Email"):
+        if not reset_email or "@" not in reset_email:
+            st.error("Enter valid email")
+        else:
+            res = requests.post(
+                f"{SUPABASE_URL}/auth/v1/recover",
+                headers={
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={"email": reset_email}
+            )
+            st.write("STATUS:", res.status_code)
+            st.write("RESPONSE:", res.text)
 
     st.markdown("---")
 
-    # RESET PASSWORD
-  st.subheader("Reset Password")
-
-reset_email = st.text_input("User Email")
-
-if st.button("Send Reset Email"):
-    if not reset_email or "@" not in reset_email:
-        st.error("Enter valid email")
-    else:
-        res = requests.post(
-            f"{SUPABASE_URL}/auth/v1/recover",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={"email": reset_email}
-        )
-
-        st.write("STATUS:", res.status_code)
-        st.write("RESPONSE:", res.text)
-
-    st.markdown("---")
-
-    # LOTTERY
     if st.button("Run Lottery"):
         c.execute("DELETE FROM results")
 
@@ -300,4 +294,3 @@ if st.button("Send Reset Email"):
         "results.csv",
         "text/csv"
     )
-    
