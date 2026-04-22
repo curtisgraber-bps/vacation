@@ -9,14 +9,13 @@ ADMIN_PASSWORD = "admin123"
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-
 REDIRECT_URL = "https://bpa-wellness.streamlit.app"
 
 conn = psycopg2.connect(st.secrets["DB_URL"])
 conn.autocommit = True
 c = conn.cursor()
 
-# ---------------- TABLES ----------------
+# ---------- TABLES ----------
 c.execute("""CREATE TABLE IF NOT EXISTS employees (
     employee_id TEXT PRIMARY KEY,
     first_name TEXT,
@@ -41,7 +40,7 @@ c.execute("""CREATE TABLE IF NOT EXISTS weeks (
     enabled BOOLEAN
 )""")
 
-# ---------------- HELPERS ----------------
+# ---------- HELPERS ----------
 def get_employees():
     return pd.read_sql_query("SELECT * FROM employees", conn)
 
@@ -59,42 +58,59 @@ if pd.read_sql_query("SELECT COUNT(*) c FROM weeks", conn)["c"][0] == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (%s,%s)", (w, True))
 
-# ---------------- PASSWORD RESET FLOW ----------------
+# ---------- PASSWORD RESET (OTP FLOW) ----------
 params = st.query_params
 
-if "access_token" in params and params.get("type") == "recovery":
-
-    st.title("Reset Your Password")
+if "token" in params and params.get("type") == "recovery":
+    st.title("Reset Password")
 
     new_password = st.text_input("New Password", type="password")
 
-    if st.button("Set New Password"):
-
-        res = requests.put(
-            f"{SUPABASE_URL}/auth/v1/user",
+    if st.button("Set Password"):
+        verify = requests.post(
+            f"{SUPABASE_URL}/auth/v1/verify",
             headers={
                 "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {params['access_token']}",
+                "Authorization": f"Bearer {SUPABASE_KEY}",
                 "Content-Type": "application/json"
             },
-            json={"password": new_password}
+            json={
+                "type": "recovery",
+                "token": params["token"]
+            }
         )
 
-        if res.status_code == 200:
-            st.success("Password updated. You can now log in.")
+        if verify.status_code == 200:
+            access_token = verify.json()["access_token"]
+
+            update = requests.put(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json={"password": new_password}
+            )
+
+            if update.status_code == 200:
+                st.success("Password updated")
+            else:
+                st.error("Update failed")
+                st.write(update.text)
         else:
-            st.error("Failed to reset password")
-            st.write(res.text)
+            st.error("Invalid or expired link")
+            st.write(verify.text)
 
     st.stop()
 
-# ---------------- SESSION ----------------
+# ---------- SESSION ----------
 if "user" not in st.session_state:
     st.session_state.user = None
 if "role" not in st.session_state:
     st.session_state.role = None
 
-# ---------------- LOGIN ----------------
+# ---------- LOGIN ----------
 if not st.session_state.user:
     st.title("Login")
 
@@ -126,7 +142,7 @@ if not st.session_state.user:
 
     if st.button("Forgot Password"):
         requests.post(
-            f"{SUPABASE_URL}/auth/v1/recover",
+            f"{SUPABASE_URL}/auth/v1/otp",
             headers={
                 "apikey": SUPABASE_KEY,
                 "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -134,6 +150,7 @@ if not st.session_state.user:
             },
             json={
                 "email": email,
+                "type": "recovery",
                 "redirect_to": REDIRECT_URL
             }
         )
@@ -147,13 +164,13 @@ if not st.session_state.user:
                 st.session_state.role = "admin"
                 st.rerun()
 
-# ---------------- LOGOUT ----------------
+# ---------- LOGOUT ----------
 if st.session_state.user:
     if st.button("Logout"):
         st.session_state.clear()
         st.rerun()
 
-# ---------------- USER ----------------
+# ---------- USER ----------
 if st.session_state.user and st.session_state.role == "user":
     st.title("Vacation Scheduler")
 
@@ -180,7 +197,7 @@ if st.session_state.user and st.session_state.role == "user":
         conn.commit()
         st.success("Submitted")
 
-# ---------------- ADMIN ----------------
+# ---------- ADMIN ----------
 if st.session_state.user and st.session_state.role == "admin":
 
     st.title("Admin Panel")
