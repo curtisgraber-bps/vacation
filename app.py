@@ -2,18 +2,17 @@ import streamlit as st
 import pandas as pd
 import psycopg2
 import datetime
-import bcrypt
 import random
+from supabase import create_client
 
 ADMIN_PASSWORD = "admin123"
 
-from supabase import create_client
-
+# SUPABASE
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# DB
 conn = psycopg2.connect(st.secrets["DB_URL"])
 conn.autocommit = True
 c = conn.cursor()
@@ -24,8 +23,7 @@ c.execute("""CREATE TABLE IF NOT EXISTS employees (
     first_name TEXT,
     last_name TEXT,
     hire_date DATE,
-    win_count INTEGER DEFAULT 0,
-    password_hash TEXT
+    win_count INTEGER DEFAULT 0
 )""")
 
 c.execute("""CREATE TABLE IF NOT EXISTS submissions (
@@ -50,19 +48,7 @@ def get_employees():
     df["employee_id"] = df["employee_id"].astype(str).str.strip()
     df["win_count"] = pd.to_numeric(df["win_count"], errors="coerce").fillna(0).astype(int)
     df["hire_date"] = pd.to_datetime(df["hire_date"], errors="coerce")
-    try:
-        df = df.sort_values(by="employee_id", key=lambda x: x.astype(int))
-    except:
-        df = df.sort_values(by="employee_id")
     return df
-
-def hash_pw(pw):
-    return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
-
-def check_pw(pw, hashed):
-    if not hashed or pd.isna(hashed):
-        return False
-    return bcrypt.checkpw(pw.encode(), hashed.encode())
 
 def generate_weeks():
     start = datetime.date(2027, 1, 1)
@@ -83,60 +69,66 @@ if pd.read_sql_query("SELECT COUNT(*) c FROM weeks", conn)["c"][0] == 0:
         c.execute("INSERT INTO weeks VALUES (%s,%s)", (w, True))
 
 # SESSION
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+if "user" not in st.session_state:
+    st.session_state.user = None
+if "role" not in st.session_state:
     st.session_state.role = None
-    st.session_state.user_id = None
 
 # LOGIN
-if not st.session_state.logged_in:
+if not st.session_state.user:
     st.title("Login")
 
-    login_id = st.text_input("Employee ID")
+    email = st.text_input("Email")
+    password = st.text_input("Password", type="password")
 
-    if login_id:
-        emps = get_employees()
-        emp = emps[emps["employee_id"] == login_id]
+    col1, col2 = st.columns(2)
 
-        if not emp.empty:
-            emp = emp.iloc[0]
+    if col1.button("Login"):
+        res = supabase.auth.sign_in_with_password({
+            "email": email,
+            "password": password
+        })
+        if res.user:
+            st.session_state.user = res.user
+            st.session_state.role = "user"
+            st.rerun()
+        else:
+            st.error("Invalid login")
 
-            if not emp["password_hash"] or pd.isna(emp["password_hash"]):
-                pw = st.text_input("Create Password", type="password")
-                if st.button("Set Password"):
-                    c.execute("UPDATE employees SET password_hash=%s WHERE employee_id=%s",
-                              (hash_pw(pw), login_id))
-                    conn.commit()
-                    st.success("Password set. Please log in.")
-            else:
-                pw = st.text_input("Password", type="password")
-                if st.button("Login"):
-                    if check_pw(pw, emp["password_hash"]):
-                        st.session_state.logged_in = True
-                        st.session_state.role = "user"
-                        st.session_state.user_id = login_id
-                        st.rerun()
+    if col2.button("Sign Up"):
+        res = supabase.auth.sign_up({
+            "email": email,
+            "password": password
+        })
+        if res.user:
+            st.success("Account created")
+
+    if st.button("Forgot Password"):
+        supabase.auth.reset_password_for_email(email)
+        st.success("Password reset email sent")
 
     if st.checkbox("Admin login"):
         pw = st.text_input("Admin Password", type="password")
         if st.button("Admin Login"):
             if pw == ADMIN_PASSWORD:
-                st.session_state.logged_in = True
+                st.session_state.user = {"email": "admin"}
                 st.session_state.role = "admin"
                 st.rerun()
 
 # LOGOUT
-if st.session_state.logged_in:
+if st.session_state.user:
     if st.button("Logout"):
         st.session_state.clear()
         st.rerun()
 
 # USER
-if st.session_state.logged_in and st.session_state.role == "user":
+if st.session_state.user and st.session_state.role == "user":
     st.title("Vacation Scheduler")
 
+    email = st.session_state.user.email
+    eid = email
+
     weeks = get_active_weeks()
-    eid = st.session_state.user_id
 
     existing = pd.read_sql_query(
         "SELECT * FROM submissions WHERE employee_id=%s",
@@ -158,112 +150,80 @@ if st.session_state.logged_in and st.session_state.role == "user":
                 (eid, *choices)
             )
             conn.commit()
-            st.rerun()
+            st.success("Submitted")
 
 # ADMIN
-if st.session_state.logged_in and st.session_state.role == "admin":
+if st.session_state.user and st.session_state.role == "admin":
 
     st.title("Admin Panel")
 
-    col1, col2, col3 = st.columns(3)
-
-    if col1.button("Clear Submissions"):
-        c.execute("DELETE FROM submissions")
-
-    if col2.button("Clear Results"):
-        c.execute("DELETE FROM results")
-
-    if col3.button("Generate Test Submissions"):
-        c.execute("DELETE FROM submissions")
-        emps = get_employees()
-        weeks = get_active_weeks()
-        for _, emp in emps.iterrows():
-            choices = random.sample(weeks, min(10, len(weeks)))
-            choices += [""] * (10 - len(choices))
-            c.execute(
-                "INSERT INTO submissions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (emp["employee_id"], *choices)
-            )
-
-    conn.commit()
-
-    st.markdown("---")
-
     # EMPLOYEES
     st.subheader("Employees")
-
-    if "emp_edit" not in st.session_state:
-        st.session_state.emp_edit = get_employees()
-
-    edited = st.data_editor(st.session_state.emp_edit, use_container_width=True)
-    st.session_state.emp_edit = edited
-
-    if st.button("Save Employee Changes"):
-        for _, row in edited.iterrows():
-            c.execute("""
-                UPDATE employees SET
-                first_name=%s,
-                last_name=%s,
-                hire_date=%s,
-                win_count=%s
-                WHERE employee_id=%s
-            """, (row["first_name"], row["last_name"], row["hire_date"], int(row["win_count"]), row["employee_id"]))
-        conn.commit()
-        st.rerun()
-
-    st.markdown("---")
+    emps = get_employees()
+    st.dataframe(emps)
 
     # ADD EMPLOYEE
     st.subheader("Add Employee")
-
-    new_id = st.text_input("New ID")
+    new_id = st.text_input("Email (Employee ID)")
     new_fn = st.text_input("First Name")
     new_ln = st.text_input("Last Name")
     new_hd = st.date_input("Hire Date")
 
     if st.button("Add Employee"):
-        c.execute("INSERT INTO employees VALUES (%s,%s,%s,%s,%s,%s)",
-                  (new_id.strip(), new_fn, new_ln, new_hd, 0, None))
+        c.execute("INSERT INTO employees VALUES (%s,%s,%s,%s,%s)",
+                  (new_id.strip(), new_fn, new_ln, new_hd, 0))
+        conn.commit()
+        st.success("Added")
+
+    st.markdown("---")
+
+    # ADMIN CREATE SUBMISSION
+    st.subheader("Create / Edit Submission")
+
+    users = emps["employee_id"].tolist()
+    selected = st.selectbox("Select User", users)
+
+    weeks = get_active_weeks()
+    choices = [st.selectbox(f"Choice {i}", [""] + weeks, key=f"a{i}") for i in range(1, 11)]
+
+    if st.button("Save Submission"):
+        c.execute("DELETE FROM submissions WHERE employee_id=%s", (selected,))
+        c.execute(
+            "INSERT INTO submissions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (selected, *choices)
+        )
+        conn.commit()
+        st.success("Saved")
+
+    st.markdown("---")
+
+    # WEEKS
+    st.subheader("Weeks")
+
+    col1, col2 = st.columns(2)
+
+    if col1.button("Select All Weeks"):
+        c.execute("UPDATE weeks SET enabled=TRUE")
         conn.commit()
         st.rerun()
 
-    st.markdown("---")
-
-    # RESET PASSWORD
-    st.subheader("Reset Password")
-
-    rid = st.text_input("Employee ID to reset")
-
-    if st.button("Reset Password"):
-        c.execute("UPDATE employees SET password_hash=NULL WHERE employee_id=%s", (rid.strip(),))
+    if col2.button("Deselect All Weeks"):
+        c.execute("UPDATE weeks SET enabled=FALSE")
         conn.commit()
-        st.success("Password reset")
+        st.rerun()
 
-    st.markdown("---")
+    weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
 
-    # SUBMISSIONS
-    st.subheader("Submissions")
+    updates = []
+    for _, row in weeks_df.iterrows():
+        val = st.checkbox(row["week"], value=row["enabled"])
+        if val != row["enabled"]:
+            updates.append((val, row["week"]))
 
-    subs = pd.read_sql_query("SELECT * FROM submissions", conn)
-
-    if not subs.empty:
-        merged = subs.merge(get_employees(), on="employee_id")
-        merged["choices"] = merged.apply(
-            lambda r: ", ".join([str(r[f"choice{i}"]) for i in range(1, 11) if r[f"choice{i}"]]),
-            axis=1
-        )
-
-        st.dataframe(merged[["employee_id","first_name","last_name","choices"]])
-
-        st.download_button(
-            "Download Submissions",
-            merged.to_csv(index=False).encode("utf-8"),
-            "submissions.csv",
-            "text/csv"
-        )
-
-    else:
-        st.info("No submissions yet")
+    if updates:
+        for val, week in updates:
+            c.execute("UPDATE weeks SET enabled=%s WHERE week=%s", (val, week))
+        conn.commit()
 
     st.markdown("---")
 
@@ -271,8 +231,8 @@ if st.session_state.logged_in and st.session_state.role == "admin":
     if st.button("Run Lottery"):
         c.execute("DELETE FROM results")
 
-        emps = get_employees()
         subs = pd.read_sql_query("SELECT * FROM submissions", conn)
+        emps = get_employees()
 
         emps = emps[emps["employee_id"].isin(subs["employee_id"])]
         emps = emps.sort_values(by=["win_count","hire_date"])
@@ -287,14 +247,11 @@ if st.session_state.logged_in and st.session_state.role == "admin":
                 if ch and ch not in taken:
                     taken.add(ch)
                     c.execute("INSERT INTO results VALUES (%s,%s)", (emp["employee_id"], ch))
-                    c.execute("UPDATE employees SET win_count = win_count + 1 WHERE employee_id=%s", (emp["employee_id"],))
                     break
 
         conn.commit()
 
     res = pd.read_sql_query("SELECT * FROM results", conn)
-    res = res.merge(get_employees(), on="employee_id")
-
     st.dataframe(res)
 
     st.download_button(
