@@ -7,8 +7,8 @@ import requests
 
 ADMIN_PASSWORD = "admin123"
 
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+SUPABASE_URL = "https://ugnxfszbikjuzaklsnji.supabase.co"
+SUPABASE_KEY = "sb_secret_-AlKPxmMHwnuMjIlfMI7Wg_5LNS6YVr"
 
 conn = psycopg2.connect(st.secrets["DB_URL"])
 conn.autocommit = True
