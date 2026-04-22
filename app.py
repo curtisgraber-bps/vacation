@@ -4,7 +4,6 @@ import psycopg2
 import datetime
 import random
 import bcrypt
-import uuid
 
 ADMIN_PASSWORD = "admin123"
 
@@ -19,9 +18,7 @@ c.execute("""CREATE TABLE IF NOT EXISTS employees (
     last_name TEXT,
     hire_date DATE,
     win_count INTEGER DEFAULT 0,
-    password_hash TEXT,
-    reset_token TEXT,
-    reset_expiry TIMESTAMP
+    password_hash TEXT
 )""")
 
 c.execute("""CREATE TABLE IF NOT EXISTS submissions (
@@ -41,61 +38,29 @@ c.execute("""CREATE TABLE IF NOT EXISTS weeks (
 )""")
 
 # ---------- HELPERS ----------
-def get_employees():
-    return pd.read_sql_query("SELECT * FROM employees", conn)
-
 def hash_pw(pw):
     return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
 
 def check_pw(pw, hashed):
     return bcrypt.checkpw(pw.encode(), hashed.encode())
 
+def get_employees():
+    return pd.read_sql_query("SELECT * FROM employees ORDER BY employee_id", conn)
+
 def generate_weeks():
     start = datetime.date(2027, 1, 1)
     while start.weekday() != 5:
         start += datetime.timedelta(days=1)
-    return [f"{start + datetime.timedelta(weeks=i)} to {start + datetime.timedelta(days=7 + i*7)}" for i in range(52)]
+    return [str(start + datetime.timedelta(weeks=i)) for i in range(52)]
 
 def get_active_weeks():
-    return pd.read_sql_query("SELECT week FROM weeks WHERE enabled = TRUE", conn)["week"].tolist()
+    df = pd.read_sql_query("SELECT week FROM weeks WHERE enabled = TRUE ORDER BY week", conn)
+    return df["week"].tolist() if not df.empty else []
 
 # INIT WEEKS
 if pd.read_sql_query("SELECT COUNT(*) c FROM weeks", conn)["c"][0] == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (%s,%s)", (w, True))
-
-# ---------- RESET ----------
-params = st.query_params
-if "token" in params:
-    token = params["token"]
-
-    user = pd.read_sql_query(
-        "SELECT * FROM employees WHERE reset_token=%s",
-        conn,
-        params=(token,)
-    )
-
-    if user.empty:
-        st.error("Invalid token")
-        st.stop()
-
-    if user.iloc[0]["reset_expiry"] and user.iloc[0]["reset_expiry"] < datetime.datetime.utcnow():
-        st.error("Token expired")
-        st.stop()
-
-    st.title("Reset Password")
-    new_pw = st.text_input("New Password", type="password")
-
-    if st.button("Set Password"):
-        hashed = hash_pw(new_pw)
-        c.execute(
-            "UPDATE employees SET password_hash=%s, reset_token=NULL, reset_expiry=NULL WHERE employee_id=%s",
-            (hashed, user.iloc[0]["employee_id"])
-        )
-        conn.commit()
-        st.success("Password updated")
-
-    st.stop()
 
 # ---------- SESSION ----------
 if "user" not in st.session_state:
@@ -135,18 +100,6 @@ if not st.session_state.user:
         conn.commit()
         st.success("Account created")
 
-    if st.button("Forgot Password"):
-        token = str(uuid.uuid4())
-        expiry = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
-
-        c.execute(
-            "UPDATE employees SET reset_token=%s, reset_expiry=%s WHERE employee_id=%s",
-            (token, expiry, email)
-        )
-        conn.commit()
-
-        st.code(f"https://bpa-wellness.streamlit.app/?token={token}")
-
     if st.checkbox("Admin login"):
         pw = st.text_input("Admin Password", type="password")
         if st.button("Admin Login"):
@@ -174,21 +127,18 @@ if st.session_state.user and st.session_state.role == "user":
         params=(email,)
     )
 
-    default_choices = [""] * 10
+    default = [""] * 10
     if not existing.empty:
         row = existing.iloc[0]
-        default_choices = [row[f"choice{i}"] or "" for i in range(1, 11)]
-        st.info("You have already submitted. You can update your choices.")
+        default = [row[f"choice{i}"] or "" for i in range(1, 11)]
 
     choices = []
     for i in range(1, 11):
-        idx = weeks.index(default_choices[i-1]) + 1 if default_choices[i-1] in weeks else 0
-        choice = st.selectbox(f"Choice {i}", [""] + weeks, index=idx, key=f"c{i}")
-        choices.append(choice)
+        idx = weeks.index(default[i-1]) + 1 if default[i-1] in weeks else 0
+        choices.append(st.selectbox(f"Choice {i}", [""] + weeks, index=idx, key=f"c{i}"))
 
     if st.button("Save Choices"):
-        c.execute(
-            """
+        c.execute("""
             INSERT INTO submissions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT (employee_id) DO UPDATE SET
                 choice1=EXCLUDED.choice1,
@@ -201,52 +151,99 @@ if st.session_state.user and st.session_state.role == "user":
                 choice8=EXCLUDED.choice8,
                 choice9=EXCLUDED.choice9,
                 choice10=EXCLUDED.choice10
-            """,
-            (email, *choices)
-        )
+        """, (email, *choices))
         conn.commit()
         st.success("Saved")
 
 # ---------- ADMIN ----------
 if st.session_state.user and st.session_state.role == "admin":
+
     st.title("Admin Panel")
 
-    if st.button("Clear Submissions"):
+    col1, col2 = st.columns(2)
+
+    if col1.button("Clear Submissions"):
         c.execute("DELETE FROM submissions")
         conn.commit()
         st.rerun()
 
+    if col2.button("Clear Results"):
+        c.execute("DELETE FROM results")
+        conn.commit()
+        st.rerun()
+
+    # EMPLOYEES
     st.subheader("Employees")
     st.dataframe(get_employees())
 
-    st.subheader("Change User Password")
-    user_email = st.text_input("User Email")
-    new_pw = st.text_input("New Password", type="password")
+    st.subheader("Add Employee")
+    new_email = st.text_input("Email")
+    new_pw = st.text_input("Password", type="password")
 
-    if st.button("Update Password"):
+    if st.button("Add Employee"):
         hashed = hash_pw(new_pw)
         c.execute(
-            "UPDATE employees SET password_hash=%s WHERE employee_id=%s",
-            (hashed, user_email)
+            "INSERT INTO employees (employee_id, password_hash, hire_date, win_count) VALUES (%s,%s,%s,%s)",
+            (new_email, hashed, datetime.date.today(), 0)
         )
         conn.commit()
-        st.success("Password updated")
+        st.success("Added")
 
+    st.subheader("Change Password")
+    user_email = st.text_input("User Email")
+    new_pw2 = st.text_input("New Password", type="password")
+
+    if st.button("Update Password"):
+        hashed = hash_pw(new_pw2)
+        c.execute("UPDATE employees SET password_hash=%s WHERE employee_id=%s",
+                  (hashed, user_email))
+        conn.commit()
+        st.success("Updated")
+
+    # SUBMISSIONS
     st.subheader("Submissions")
     subs = pd.read_sql_query("SELECT * FROM submissions", conn)
     st.dataframe(subs)
 
     if not subs.empty:
-        user_to_delete = st.selectbox("Delete submission", subs["employee_id"])
-        if st.button("Delete Selected Submission"):
-            c.execute("DELETE FROM submissions WHERE employee_id=%s", (user_to_delete,))
+        delete_user = st.selectbox("Delete submission", subs["employee_id"])
+        if st.button("Delete Selected"):
+            c.execute("DELETE FROM submissions WHERE employee_id=%s", (delete_user,))
             conn.commit()
             st.rerun()
 
+    # LOTTERY
     if st.button("Run Lottery"):
         c.execute("DELETE FROM results")
-        conn.commit()
 
+        subs = pd.read_sql_query("SELECT * FROM submissions", conn)
+        emps = get_employees()
+
+        emps = emps.sort_values(by=["win_count", "hire_date"])
+
+        taken = set()
+
+        for _, emp in emps.iterrows():
+            sub = subs[subs["employee_id"] == emp["employee_id"]]
+            if sub.empty:
+                continue
+
+            row = sub.iloc[0]
+
+            for i in range(1, 11):
+                choice = row[f"choice{i}"]
+                if choice and choice not in taken:
+                    taken.add(choice)
+                    c.execute("INSERT INTO results VALUES (%s,%s)", (emp["employee_id"], choice))
+                    c.execute("UPDATE employees SET win_count = win_count + 1 WHERE employee_id=%s",
+                              (emp["employee_id"],))
+                    break
+
+        conn.commit()
+        st.success("Lottery complete")
+
+    # RESULTS
+    st.subheader("Results")
     res = pd.read_sql_query("SELECT * FROM results", conn)
     st.dataframe(res)
 
