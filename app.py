@@ -5,7 +5,7 @@ import datetime
 import bcrypt
 import random
 
-ADMIN_PASSWORD = "admin123"
+ADMIN_PASSWORD = "admin123" 
 
 conn = psycopg2.connect(st.secrets["DB_URL"])
 conn.autocommit = True
