@@ -60,7 +60,7 @@ def get_active_weeks():
         ORDER BY TO_DATE(split_part(week, ' to ', 1), 'YYYY-MM-DD')
     """, conn)["week"].tolist()
 
-# INIT
+# INIT WEEKS
 if pd.read_sql_query("SELECT COUNT(*) c FROM weeks", conn)["c"][0] == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (%s,%s)", (w, True))
@@ -135,7 +135,6 @@ if st.session_state.user and st.session_state.role == "user":
 
     emps = get_employees()
 
-    # AUTO CREATE USER IF NOT EXISTS
     if eid not in emps["employee_id"].values:
         c.execute(
             "INSERT INTO employees VALUES (%s,%s,%s,%s,%s)",
@@ -192,7 +191,6 @@ if st.session_state.user and st.session_state.role == "admin":
                 "INSERT INTO submissions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (emp["employee_id"], *choices)
             )
-
     conn.commit()
 
     st.markdown("---")
@@ -215,28 +213,24 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.markdown("---")
 
-    st.subheader("Create / Edit Submission")
+    st.subheader("Submissions")
 
-    users = emps["employee_id"].tolist()
-    selected = st.selectbox("Select User", users)
-
-    weeks = get_active_weeks()
-    choices = [st.selectbox(f"Choice {i}", [""] + weeks, key=f"a{i}") for i in range(1, 11)]
-
-    if st.button("Save Submission"):
-        c.execute("DELETE FROM submissions WHERE employee_id=%s", (selected,))
-        c.execute(
-            "INSERT INTO submissions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-            (selected, *choices)
+    subs = pd.read_sql_query("SELECT * FROM submissions", conn)
+    if not subs.empty:
+        merged = subs.merge(emps, on="employee_id", how="left")
+        merged["choices"] = merged.apply(
+            lambda r: ", ".join([str(r[f"choice{i}"]) for i in range(1, 11) if r[f"choice{i}"]]),
+            axis=1
         )
-        conn.commit()
-        st.success("Saved")
+        st.dataframe(merged[["employee_id","first_name","last_name","choices"]])
+    else:
+        st.info("No submissions yet")
 
     st.markdown("---")
 
     st.subheader("Reset User Password")
 
-    reset_email = st.text_input("User Email for reset")
+    reset_email = st.text_input("User Email")
 
     if st.button("Send Reset Email"):
         requests.post(
