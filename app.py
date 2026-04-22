@@ -60,7 +60,7 @@ def get_active_weeks():
         ORDER BY TO_DATE(split_part(week, ' to ', 1), 'YYYY-MM-DD')
     """, conn)["week"].tolist()
 
-# INIT WEEKS
+# INIT
 if pd.read_sql_query("SELECT COUNT(*) c FROM weeks", conn)["c"][0] == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (%s,%s)", (w, True))
@@ -134,9 +134,15 @@ if st.session_state.user and st.session_state.role == "user":
     eid = email
 
     emps = get_employees()
+
+    # AUTO CREATE USER IF NOT EXISTS
     if eid not in emps["employee_id"].values:
-        st.error("Not authorized. Contact admin.")
-        st.stop()
+        c.execute(
+            "INSERT INTO employees VALUES (%s,%s,%s,%s,%s)",
+            (eid, "", "", datetime.date.today(), 0)
+        )
+        conn.commit()
+        st.rerun()
 
     weeks = get_active_weeks()
 
@@ -192,7 +198,8 @@ if st.session_state.user and st.session_state.role == "admin":
     st.markdown("---")
 
     st.subheader("Employees")
-    st.dataframe(get_employees())
+    emps = get_employees()
+    st.dataframe(emps)
 
     st.subheader("Add Employee")
     new_id = st.text_input("Email")
@@ -210,7 +217,7 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.subheader("Create / Edit Submission")
 
-    users = get_employees()["employee_id"].tolist()
+    users = emps["employee_id"].tolist()
     selected = st.selectbox("Select User", users)
 
     weeks = get_active_weeks()
@@ -227,9 +234,9 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.markdown("---")
 
-    st.subheader("Reset User Password (send email)")
+    st.subheader("Reset User Password")
 
-    reset_email = st.text_input("User Email")
+    reset_email = st.text_input("User Email for reset")
 
     if st.button("Send Reset Email"):
         requests.post(
