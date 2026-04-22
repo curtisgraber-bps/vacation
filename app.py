@@ -110,7 +110,6 @@ if not st.session_state.user:
         st.write("STATUS:", res.status_code)
         st.write("RESPONSE:", res.text)
 
-    # ADMIN LOGIN (THIS WAS MISSING)
     if st.checkbox("Admin login"):
         pw = st.text_input("Admin Password", type="password")
         if st.button("Admin Login"):
@@ -197,12 +196,35 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.markdown("---")
 
+    # EMPLOYEES
+    st.subheader("Employees")
+    emps = get_employees()
+    st.dataframe(emps)
+
+    st.subheader("Add Employee")
+    new_id = st.text_input("Email")
+    new_fn = st.text_input("First Name")
+    new_ln = st.text_input("Last Name")
+    new_hd = st.date_input("Hire Date")
+
+    if st.button("Add Employee"):
+        c.execute(
+            "INSERT INTO employees VALUES (%s,%s,%s,%s,%s)",
+            (new_id.strip(), new_fn, new_ln, new_hd, 0)
+        )
+        conn.commit()
+        st.success("Added")
+        st.rerun()
+
+    st.markdown("---")
+
+    # SUBMISSIONS
     st.subheader("Submissions")
 
     subs = pd.read_sql_query("SELECT * FROM submissions", conn)
 
     if not subs.empty:
-        merged = subs.merge(get_employees(), on="employee_id", how="left")
+        merged = subs.merge(emps, on="employee_id", how="left")
         merged["choices"] = merged.apply(
             lambda r: ", ".join([str(r[f"choice{i}"]) for i in range(1, 11) if r[f"choice{i}"]]),
             axis=1
@@ -221,6 +243,7 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.markdown("---")
 
+    # RESET PASSWORD
     st.subheader("Reset Password")
 
     reset_email = st.text_input("User Email")
@@ -239,6 +262,7 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.markdown("---")
 
+    # LOTTERY
     if st.button("Run Lottery"):
         c.execute("DELETE FROM results")
 
@@ -271,3 +295,4 @@ if st.session_state.user and st.session_state.role == "admin":
         "results.csv",
         "text/csv"
     )
+    
