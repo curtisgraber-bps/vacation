@@ -172,13 +172,20 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.title("Admin Panel")
 
+    # ===== CONTROL BUTTONS =====
     col1, col2, col3 = st.columns(3)
 
     if col1.button("Clear Submissions"):
         c.execute("DELETE FROM submissions")
+        conn.commit()
+        st.success("Submissions cleared")
+        st.rerun()
 
     if col2.button("Clear Results"):
         c.execute("DELETE FROM results")
+        conn.commit()
+        st.success("Results cleared")
+        st.rerun()
 
     if col3.button("Generate Test Submissions"):
         c.execute("DELETE FROM submissions")
@@ -191,14 +198,18 @@ if st.session_state.user and st.session_state.role == "admin":
                 "INSERT INTO submissions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (emp["employee_id"], *choices)
             )
-    conn.commit()
+        conn.commit()
+        st.success("Test data generated")
+        st.rerun()
 
     st.markdown("---")
 
+    # EMPLOYEES
     st.subheader("Employees")
     emps = get_employees()
     st.dataframe(emps)
 
+    # ADD EMPLOYEE
     st.subheader("Add Employee")
     new_id = st.text_input("Email")
     new_fn = st.text_input("First Name")
@@ -213,6 +224,7 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.markdown("---")
 
+    # SUBMISSIONS VIEW
     st.subheader("Submissions")
 
     subs = pd.read_sql_query("SELECT * FROM submissions", conn)
@@ -228,8 +240,8 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.markdown("---")
 
+    # PASSWORD RESET
     st.subheader("Reset User Password")
-
     reset_email = st.text_input("User Email")
 
     if st.button("Send Reset Email"):
@@ -242,6 +254,7 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.markdown("---")
 
+    # LOTTERY
     if st.button("Run Lottery"):
         c.execute("DELETE FROM results")
 
