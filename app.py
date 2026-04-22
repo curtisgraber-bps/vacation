@@ -7,6 +7,13 @@ import random
 
 ADMIN_PASSWORD = "admin123"
 
+from supabase import create_client
+
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 conn = psycopg2.connect(st.secrets["DB_URL"])
 conn.autocommit = True
 c = conn.cursor()
