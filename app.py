@@ -236,17 +236,31 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.markdown("---")
 
-    st.subheader("Reset Password")
-
-    reset_email = st.text_input("User Email")
-
     if st.button("Send Reset Email"):
-        requests.post(
-            f"{SUPABASE_URL}/auth/v1/recover",
-            headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
-            json={"email": reset_email}
-        )
-        st.success("Reset email sent")
+
+    if not reset_email or "@" not in reset_email:
+        st.error("Enter a valid email")
+    else:
+        try:
+            res = requests.post(
+                f"{SUPABASE_URL}/auth/v1/recover",
+                headers={
+                    "apikey": SUPABASE_KEY,
+                    "Content-Type": "application/json"
+                },
+                json={"email": reset_email},
+                timeout=10
+            )
+
+            if res.status_code == 200:
+                st.success("Reset email sent")
+            else:
+                st.error(f"Failed: {res.status_code}")
+                st.write(res.text)
+
+        except Exception as e:
+            st.error("Request failed")
+            st.write(str(e))
 
     st.markdown("---")
 
