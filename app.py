@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import psycopg2
 import datetime
-import random
 import bcrypt
 
 ADMIN_PASSWORD = "admin123"
@@ -127,14 +126,14 @@ if st.session_state.user and st.session_state.role == "user":
         params=(email,)
     )
 
-    default = [""] * 10
+    defaults = [""] * 10
     if not existing.empty:
         row = existing.iloc[0]
-        default = [row[f"choice{i}"] or "" for i in range(1, 11)]
+        defaults = [row[f"choice{i}"] or "" for i in range(1, 11)]
 
     choices = []
     for i in range(1, 11):
-        idx = weeks.index(default[i-1]) + 1 if default[i-1] in weeks else 0
+        idx = weeks.index(defaults[i-1]) + 1 if defaults[i-1] in weeks else 0
         choices.append(st.selectbox(f"Choice {i}", [""] + weeks, index=idx, key=f"c{i}"))
 
     if st.button("Save Choices"):
@@ -200,6 +199,22 @@ if st.session_state.user and st.session_state.role == "admin":
         conn.commit()
         st.success("Updated")
 
+    # WEEKS
+    st.subheader("Weeks")
+    weeks_df = pd.read_sql_query("SELECT * FROM weeks ORDER BY week", conn)
+    st.dataframe(weeks_df)
+
+    for i, row in weeks_df.iterrows():
+        col1, col2 = st.columns([4,1])
+        col1.write(row["week"])
+        new_val = col2.checkbox("Enabled", value=row["enabled"], key=f"wk_{i}")
+
+        if new_val != row["enabled"]:
+            c.execute("UPDATE weeks SET enabled=%s WHERE week=%s",
+                      (new_val, row["week"]))
+            conn.commit()
+            st.rerun()
+
     # SUBMISSIONS
     st.subheader("Submissions")
     subs = pd.read_sql_query("SELECT * FROM submissions", conn)
@@ -217,9 +232,7 @@ if st.session_state.user and st.session_state.role == "admin":
         c.execute("DELETE FROM results")
 
         subs = pd.read_sql_query("SELECT * FROM submissions", conn)
-        emps = get_employees()
-
-        emps = emps.sort_values(by=["win_count", "hire_date"])
+        emps = get_employees().sort_values(by=["win_count","hire_date"])
 
         taken = set()
 
@@ -230,11 +243,12 @@ if st.session_state.user and st.session_state.role == "admin":
 
             row = sub.iloc[0]
 
-            for i in range(1, 11):
+            for i in range(1,11):
                 choice = row[f"choice{i}"]
                 if choice and choice not in taken:
                     taken.add(choice)
-                    c.execute("INSERT INTO results VALUES (%s,%s)", (emp["employee_id"], choice))
+                    c.execute("INSERT INTO results VALUES (%s,%s)",
+                              (emp["employee_id"], choice))
                     c.execute("UPDATE employees SET win_count = win_count + 1 WHERE employee_id=%s",
                               (emp["employee_id"],))
                     break
