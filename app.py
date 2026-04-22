@@ -76,6 +76,7 @@ if not st.session_state.user:
 
     col1, col2 = st.columns(2)
 
+    # LOGIN
     if col1.button("Login"):
         user = pd.read_sql_query(
             "SELECT * FROM employees WHERE employee_id=%s",
@@ -90,15 +91,24 @@ if not st.session_state.user:
         else:
             st.error("Invalid login")
 
+    # CREATE ACCOUNT (FIXED)
     if col2.button("Create Account"):
-        hashed = hash_pw(password)
-        c.execute(
-            "INSERT INTO employees (employee_id, password_hash, hire_date, win_count) VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING",
-            (email, hashed, datetime.date.today(), 0)
-        )
-        conn.commit()
-        st.success("Account created")
+        if not email or not password:
+            st.error("Enter email and password")
+        else:
+            hashed = hash_pw(password)
 
+            c.execute("""
+                INSERT INTO employees (employee_id, password_hash, hire_date, win_count)
+                VALUES (%s,%s,%s,%s)
+                ON CONFLICT (employee_id)
+                DO UPDATE SET password_hash = EXCLUDED.password_hash
+            """, (email, hashed, datetime.date.today(), 0))
+
+            conn.commit()
+            st.success("Account created. Now click Login.")
+
+    # ADMIN LOGIN
     if st.checkbox("Admin login"):
         pw = st.text_input("Admin Password", type="password")
         if st.button("Admin Login"):
@@ -181,10 +191,12 @@ if st.session_state.user and st.session_state.role == "admin":
 
     if st.button("Add Employee"):
         hashed = hash_pw(new_pw)
-        c.execute(
-            "INSERT INTO employees (employee_id, password_hash, hire_date, win_count) VALUES (%s,%s,%s,%s)",
-            (new_email, hashed, datetime.date.today(), 0)
-        )
+        c.execute("""
+            INSERT INTO employees (employee_id, password_hash, hire_date, win_count)
+            VALUES (%s,%s,%s,%s)
+            ON CONFLICT (employee_id)
+            DO UPDATE SET password_hash = EXCLUDED.password_hash
+        """, (new_email, hashed, datetime.date.today(), 0))
         conn.commit()
         st.success("Added")
 
@@ -203,17 +215,6 @@ if st.session_state.user and st.session_state.role == "admin":
     st.subheader("Weeks")
     weeks_df = pd.read_sql_query("SELECT * FROM weeks ORDER BY week", conn)
     st.dataframe(weeks_df)
-
-    for i, row in weeks_df.iterrows():
-        col1, col2 = st.columns([4,1])
-        col1.write(row["week"])
-        new_val = col2.checkbox("Enabled", value=row["enabled"], key=f"wk_{i}")
-
-        if new_val != row["enabled"]:
-            c.execute("UPDATE weeks SET enabled=%s WHERE week=%s",
-                      (new_val, row["week"]))
-            conn.commit()
-            st.rerun()
 
     # SUBMISSIONS
     st.subheader("Submissions")
