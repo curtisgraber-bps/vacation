@@ -59,7 +59,7 @@ def get_active_weeks():
     df = pd.read_sql_query("SELECT week FROM weeks WHERE enabled = TRUE ORDER BY week", conn)
     return df["week"].tolist() if not df.empty else []
 
-# INIT WEEKS
+# ---------- INIT WEEKS ----------
 if pd.read_sql_query("SELECT COUNT(*) c FROM weeks", conn)["c"][0] == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (%s,%s)", (w, True))
@@ -116,7 +116,7 @@ if not st.session_state.user:
                     (hashed, email)
                 )
                 conn.commit()
-                st.success("Password set. Now login.")
+                st.success("Password set. Now click Login.")
 
     # ADMIN LOGIN
     if st.checkbox("Admin login"):
@@ -195,43 +195,62 @@ if st.session_state.user and st.session_state.role == "admin":
     st.subheader("Employees")
     st.dataframe(get_employees())
 
- st.subheader("Add Employee")
+    st.subheader("Add Employee")
 
-new_email_input = st.text_input("Email")
-first_name = st.text_input("First Name")
-last_name = st.text_input("Last Name")
-hire_date = st.date_input("Hire Date")
+    new_email_input = st.text_input("Email")
+    first_name = st.text_input("First Name")
+    last_name = st.text_input("Last Name")
+    hire_date = st.date_input("Hire Date")
 
-new_email = norm_email(new_email_input)
+    new_email = norm_email(new_email_input)
 
-if st.button("Add Employee"):
-    if not new_email or not first_name or not last_name:
-        st.error("All fields required")
-    else:
-        c.execute("""
-            INSERT INTO employees (employee_id, first_name, last_name, hire_date, win_count)
-            VALUES (%s,%s,%s,%s,%s)
-            ON CONFLICT (employee_id)
-            DO UPDATE SET
-                first_name = EXCLUDED.first_name,
-                last_name = EXCLUDED.last_name,
-                hire_date = EXCLUDED.hire_date
-        """, (new_email, first_name, last_name, hire_date, 0))
+    if st.button("Add Employee"):
+        if not new_email or not first_name or not last_name:
+            st.error("All fields required")
+        else:
+            c.execute("""
+                INSERT INTO employees (employee_id, first_name, last_name, hire_date, win_count)
+                VALUES (%s,%s,%s,%s,%s)
+                ON CONFLICT (employee_id)
+                DO UPDATE SET
+                    first_name = EXCLUDED.first_name,
+                    last_name = EXCLUDED.last_name,
+                    hire_date = EXCLUDED.hire_date
+            """, (new_email, first_name, last_name, hire_date, 0))
+            conn.commit()
+            st.success("Employee added")
 
+    st.subheader("Change Password")
+
+    user_email_input = st.text_input("User Email")
+    new_pw = st.text_input("New Password", type="password")
+
+    user_email = norm_email(user_email_input)
+
+    if st.button("Update Password"):
+        hashed = hash_pw(new_pw)
+        c.execute(
+            "UPDATE employees SET password_hash=%s WHERE LOWER(employee_id)=%s",
+            (hashed, user_email)
+        )
         conn.commit()
-        st.success("Employee added")
+        st.success("Updated")
 
     # WEEKS
     st.subheader("Weeks")
+
     weeks_df = pd.read_sql_query("SELECT * FROM weeks ORDER BY week", conn)
 
     for i, row in weeks_df.iterrows():
-        colA, colB = st.columns([4,1])
+        colA, colB = st.columns([4, 1])
         colA.write(row["week"])
-        new_val = colB.checkbox("Enabled", value=row["enabled"], key=f"wk_{i}")
+        new_val = colB.checkbox("", value=row["enabled"], key=f"wk_{i}")
+
         if new_val != row["enabled"]:
-            c.execute("UPDATE weeks SET enabled=%s WHERE week=%s",
-                      (new_val, row["week"]))
+            c.execute(
+                "UPDATE weeks SET enabled=%s WHERE week=%s",
+                (new_val, row["week"])
+            )
             conn.commit()
             st.rerun()
 
@@ -252,7 +271,7 @@ if st.button("Add Employee"):
         c.execute("DELETE FROM results")
 
         subs = pd.read_sql_query("SELECT * FROM submissions", conn)
-        emps = get_employees().sort_values(by=["win_count","hire_date"])
+        emps = get_employees().sort_values(by=["win_count", "hire_date"])
 
         taken = set()
 
@@ -263,7 +282,7 @@ if st.button("Add Employee"):
 
             row = sub.iloc[0]
 
-            for i in range(1,11):
+            for i in range(1, 11):
                 choice = row[f"choice{i}"]
                 if choice and choice not in taken:
                     taken.add(choice)
