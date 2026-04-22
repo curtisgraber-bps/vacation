@@ -10,6 +10,8 @@ ADMIN_PASSWORD = "admin123"
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
+REDIRECT_URL = "https://bpa-wellness.streamlit.app"
+
 conn = psycopg2.connect(st.secrets["DB_URL"])
 conn.autocommit = True
 c = conn.cursor()
@@ -60,32 +62,31 @@ if pd.read_sql_query("SELECT COUNT(*) c FROM weeks", conn)["c"][0] == 0:
 # ---------------- PASSWORD RESET FLOW ----------------
 params = st.query_params
 
-if "access_token" in params and "type" in params:
-    if params["type"] == "recovery":
+if "access_token" in params and params.get("type") == "recovery":
 
-        st.title("Reset Your Password")
+    st.title("Reset Your Password")
 
-        new_password = st.text_input("New Password", type="password")
+    new_password = st.text_input("New Password", type="password")
 
-        if st.button("Set New Password"):
+    if st.button("Set New Password"):
 
-            res = requests.put(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={
-                    "apikey": SUPABASE_KEY,
-                    "Authorization": f"Bearer {params['access_token']}",
-                    "Content-Type": "application/json"
-                },
-                json={"password": new_password}
-            )
+        res = requests.put(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {params['access_token']}",
+                "Content-Type": "application/json"
+            },
+            json={"password": new_password}
+        )
 
-            if res.status_code == 200:
-                st.success("Password updated. You can now log in.")
-            else:
-                st.error("Failed to reset password")
-                st.write(res.text)
+        if res.status_code == 200:
+            st.success("Password updated. You can now log in.")
+        else:
+            st.error("Failed to reset password")
+            st.write(res.text)
 
-        st.stop()
+    st.stop()
 
 # ---------------- SESSION ----------------
 if "user" not in st.session_state:
@@ -131,7 +132,10 @@ if not st.session_state.user:
                 "Authorization": f"Bearer {SUPABASE_KEY}",
                 "Content-Type": "application/json"
             },
-            json={"email": email}
+            json={
+                "email": email,
+                "redirect_to": REDIRECT_URL
+            }
         )
         st.success("Reset email sent")
 
