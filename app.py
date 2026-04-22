@@ -6,12 +6,9 @@ import random
 import bcrypt
 import uuid
 
-# ---------- CONFIG ----------
 ADMIN_PASSWORD = "admin123"
-DB_URL = st.secrets["DB_URL"]
 
-# ---------- DB ----------
-conn = psycopg2.connect(DB_URL)
+conn = psycopg2.connect(st.secrets["DB_URL"])
 conn.autocommit = True
 c = conn.cursor()
 
@@ -148,7 +145,7 @@ if not st.session_state.user:
         )
         conn.commit()
 
-        st.write("Reset link (copy this):")
+        st.write("Reset link:")
         st.code(f"https://bpa-wellness.streamlit.app/?token={token}")
 
     if st.checkbox("Admin login"):
@@ -170,16 +167,6 @@ if st.session_state.user and st.session_state.role == "user":
     st.title("Vacation Scheduler")
 
     email = st.session_state.user["email"]
-
-    emps = get_employees()
-
-    if email not in emps["employee_id"].values:
-        c.execute(
-            "INSERT INTO employees (employee_id, hire_date, win_count) VALUES (%s,%s,%s)",
-            (email, datetime.date.today(), 0)
-        )
-        conn.commit()
-        st.rerun()
 
     weeks = get_active_weeks()
     choices = [st.selectbox(f"Choice {i}", [""] + weeks, key=f"c{i}") for i in range(1, 11)]
@@ -204,6 +191,19 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.subheader("Employees")
     st.dataframe(get_employees())
+
+    st.subheader("Change User Password")
+    user_email = st.text_input("User Email")
+    new_pw = st.text_input("New Password", type="password")
+
+    if st.button("Update Password"):
+        hashed = hash_pw(new_pw)
+        c.execute(
+            "UPDATE employees SET password_hash=%s WHERE employee_id=%s",
+            (hashed, user_email)
+        )
+        conn.commit()
+        st.success("Password updated")
 
     st.subheader("Submissions")
     subs = pd.read_sql_query("SELECT * FROM submissions", conn)
