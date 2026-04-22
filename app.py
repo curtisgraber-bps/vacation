@@ -127,6 +127,11 @@ if st.session_state.user and st.session_state.role == "user":
 
     email = st.session_state.user.email
     eid = email
+    emps = get_employees()
+
+if eid not in emps["employee_id"].values:
+    st.error("You are not set up in the system. Contact admin.")
+    st.stop()
 
     weeks = get_active_weeks()
 
