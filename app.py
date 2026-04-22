@@ -60,7 +60,7 @@ def get_active_weeks():
         ORDER BY TO_DATE(split_part(week, ' to ', 1), 'YYYY-MM-DD')
     """, conn)["week"].tolist()
 
-# INIT WEEKS
+# INIT
 if pd.read_sql_query("SELECT COUNT(*) c FROM weeks", conn)["c"][0] == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (%s,%s)", (w, True))
@@ -102,20 +102,12 @@ if not st.session_state.user:
         st.success("Account created")
 
     if st.button("Forgot Password"):
-        requests.post(
+        res = requests.post(
             f"{SUPABASE_URL}/auth/v1/recover",
             headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
             json={"email": email}
         )
-        st.success("Password reset email sent")
-
-    if st.checkbox("Admin login"):
-        pw = st.text_input("Admin Password", type="password")
-        if st.button("Admin Login"):
-            if pw == ADMIN_PASSWORD:
-                st.session_state.user = {"email": "admin"}
-                st.session_state.role = "admin"
-                st.rerun()
+        st.write(res.status_code, res.text)
 
 # LOGOUT
 if st.session_state.user:
@@ -221,14 +213,11 @@ if st.session_state.user and st.session_state.role == "admin":
         )
         st.dataframe(merged[["employee_id","first_name","last_name","choices"]])
 
-        st.subheader("Delete Individual Submission")
-
-        delete_user = st.selectbox("Select user", merged["employee_id"].tolist())
+        delete_user = st.selectbox("Delete submission for user", merged["employee_id"].tolist())
 
         if st.button("Delete Selected Submission"):
             c.execute("DELETE FROM submissions WHERE employee_id=%s", (delete_user,))
             conn.commit()
-            st.success("Deleted")
             st.rerun()
 
     else:
@@ -236,31 +225,36 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.markdown("---")
 
+    st.subheader("Reset Password")
+
+    reset_email = st.text_input("User Email")
+
     if st.button("Send Reset Email"):
+        if not reset_email or "@" not in reset_email:
+            st.error("Enter a valid email")
+        else:
+            try:
+                res = requests.post(
+                    f"{SUPABASE_URL}/auth/v1/recover",
+                    headers={
+                        "apikey": SUPABASE_KEY,
+                        "Content-Type": "application/json"
+                    },
+                    json={"email": reset_email},
+                    timeout=10
+                )
 
-    if not reset_email or "@" not in reset_email:
-        st.error("Enter a valid email")
-    else:
-        try:
-            res = requests.post(
-                f"{SUPABASE_URL}/auth/v1/recover",
-                headers={
-                    "apikey": SUPABASE_KEY,
-                    "Content-Type": "application/json"
-                },
-                json={"email": reset_email},
-                timeout=10
-            )
+                st.write("STATUS:", res.status_code)
+                st.write("RESPONSE:", res.text)
 
-            if res.status_code == 200:
-                st.success("Reset email sent")
-            else:
-                st.error(f"Failed: {res.status_code}")
-                st.write(res.text)
+                if res.status_code == 200:
+                    st.success("Reset email sent")
+                else:
+                    st.error("Reset failed")
 
-        except Exception as e:
-            st.error("Request failed")
-            st.write(str(e))
+            except Exception as e:
+                st.error("Request failed")
+                st.write(str(e))
 
     st.markdown("---")
 
