@@ -1,5 +1,5 @@
 streamlit
 pandas
-bcrypt==4.0.1
 psycopg2-binary
-supabase-py
+bcrypt
+supabase==2.4.0
