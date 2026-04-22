@@ -71,6 +71,8 @@ if "role" not in st.session_state:
 if not st.session_state.user:
     st.title("Login")
 
+    st.write("You must be pre-approved. Contact admin if you don't have access.")
+
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
 
@@ -91,22 +93,29 @@ if not st.session_state.user:
         else:
             st.error("Invalid login")
 
-    # CREATE ACCOUNT (FIXED)
-    if col2.button("Create Account"):
+    # SET PASSWORD (CONTROLLED ACCESS)
+    if col2.button("Set Your Password"):
         if not email or not password:
             st.error("Enter email and password")
         else:
-            hashed = hash_pw(password)
+            existing = pd.read_sql_query(
+                "SELECT * FROM employees WHERE employee_id=%s",
+                conn,
+                params=(email,)
+            )
 
-            c.execute("""
-                INSERT INTO employees (employee_id, password_hash, hire_date, win_count)
-                VALUES (%s,%s,%s,%s)
-                ON CONFLICT (employee_id)
-                DO UPDATE SET password_hash = EXCLUDED.password_hash
-            """, (email, hashed, datetime.date.today(), 0))
+            if existing.empty:
+                st.error("You are not authorized. Contact admin.")
+            else:
+                hashed = hash_pw(password)
 
-            conn.commit()
-            st.success("Account created. Now click Login.")
+                c.execute(
+                    "UPDATE employees SET password_hash=%s WHERE employee_id=%s",
+                    (hashed, email)
+                )
+                conn.commit()
+
+                st.success("Password set. Now click Login.")
 
     # ADMIN LOGIN
     if st.checkbox("Admin login"):
@@ -195,10 +204,10 @@ if st.session_state.user and st.session_state.role == "admin":
             INSERT INTO employees (employee_id, password_hash, hire_date, win_count)
             VALUES (%s,%s,%s,%s)
             ON CONFLICT (employee_id)
-            DO UPDATE SET password_hash = EXCLUDED.password_hash
+            DO NOTHING
         """, (new_email, hashed, datetime.date.today(), 0))
         conn.commit()
-        st.success("Added")
+        st.success("Employee added")
 
     st.subheader("Change Password")
     user_email = st.text_input("User Email")
