@@ -107,7 +107,17 @@ if not st.session_state.user:
             headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
             json={"email": email}
         )
-        st.write(res.status_code, res.text)
+        st.write("STATUS:", res.status_code)
+        st.write("RESPONSE:", res.text)
+
+    # ADMIN LOGIN (THIS WAS MISSING)
+    if st.checkbox("Admin login"):
+        pw = st.text_input("Admin Password", type="password")
+        if st.button("Admin Login"):
+            if pw == ADMIN_PASSWORD:
+                st.session_state.user = {"email": "admin"}
+                st.session_state.role = "admin"
+                st.rerun()
 
 # LOGOUT
 if st.session_state.user:
@@ -187,20 +197,6 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.markdown("---")
 
-    st.subheader("Add Employee")
-    new_id = st.text_input("Email")
-    new_fn = st.text_input("First Name")
-    new_ln = st.text_input("Last Name")
-    new_hd = st.date_input("Hire Date")
-
-    if st.button("Add Employee"):
-        c.execute("INSERT INTO employees VALUES (%s,%s,%s,%s,%s)",
-                  (new_id.strip(), new_fn, new_ln, new_hd, 0))
-        conn.commit()
-        st.success("Added")
-
-    st.markdown("---")
-
     st.subheader("Submissions")
 
     subs = pd.read_sql_query("SELECT * FROM submissions", conn)
@@ -231,30 +227,15 @@ if st.session_state.user and st.session_state.role == "admin":
 
     if st.button("Send Reset Email"):
         if not reset_email or "@" not in reset_email:
-            st.error("Enter a valid email")
+            st.error("Enter valid email")
         else:
-            try:
-                res = requests.post(
-                    f"{SUPABASE_URL}/auth/v1/recover",
-                    headers={
-                        "apikey": SUPABASE_KEY,
-                        "Content-Type": "application/json"
-                    },
-                    json={"email": reset_email},
-                    timeout=10
-                )
-
-                st.write("STATUS:", res.status_code)
-                st.write("RESPONSE:", res.text)
-
-                if res.status_code == 200:
-                    st.success("Reset email sent")
-                else:
-                    st.error("Reset failed")
-
-            except Exception as e:
-                st.error("Request failed")
-                st.write(str(e))
+            res = requests.post(
+                f"{SUPABASE_URL}/auth/v1/recover",
+                headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
+                json={"email": reset_email}
+            )
+            st.write("STATUS:", res.status_code)
+            st.write("RESPONSE:", res.text)
 
     st.markdown("---")
 
