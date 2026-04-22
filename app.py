@@ -195,32 +195,31 @@ if st.session_state.user and st.session_state.role == "admin":
     st.subheader("Employees")
     st.dataframe(get_employees())
 
-    st.subheader("Add Employee")
-    new_email_input = st.text_input("Email")
-    new_pw = st.text_input("Password", type="password")
-    new_email = norm_email(new_email_input)
+ st.subheader("Add Employee")
 
-    if st.button("Add Employee"):
-        hashed = hash_pw(new_pw)
+new_email_input = st.text_input("Email")
+first_name = st.text_input("First Name")
+last_name = st.text_input("Last Name")
+hire_date = st.date_input("Hire Date")
+
+new_email = norm_email(new_email_input)
+
+if st.button("Add Employee"):
+    if not new_email or not first_name or not last_name:
+        st.error("All fields required")
+    else:
         c.execute("""
-            INSERT INTO employees (employee_id, password_hash, hire_date, win_count)
-            VALUES (%s,%s,%s,%s)
-            ON CONFLICT DO NOTHING
-        """, (new_email, hashed, datetime.date.today(), 0))
-        conn.commit()
-        st.success("Added")
+            INSERT INTO employees (employee_id, first_name, last_name, hire_date, win_count)
+            VALUES (%s,%s,%s,%s,%s)
+            ON CONFLICT (employee_id)
+            DO UPDATE SET
+                first_name = EXCLUDED.first_name,
+                last_name = EXCLUDED.last_name,
+                hire_date = EXCLUDED.hire_date
+        """, (new_email, first_name, last_name, hire_date, 0))
 
-    st.subheader("Change Password")
-    user_email_input = st.text_input("User Email")
-    new_pw2 = st.text_input("New Password", type="password")
-    user_email = norm_email(user_email_input)
-
-    if st.button("Update Password"):
-        hashed = hash_pw(new_pw2)
-        c.execute("UPDATE employees SET password_hash=%s WHERE LOWER(employee_id)=%s",
-                  (hashed, user_email))
         conn.commit()
-        st.success("Updated")
+        st.success("Employee added")
 
     # WEEKS
     st.subheader("Weeks")
