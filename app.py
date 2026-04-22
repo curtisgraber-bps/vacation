@@ -94,15 +94,12 @@ if not st.session_state.user:
             st.error("Invalid login")
 
     if col2.button("Sign Up"):
-        res = requests.post(
+        requests.post(
             f"{SUPABASE_URL}/auth/v1/signup",
             headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
             json={"email": email, "password": password}
         )
-        if res.status_code == 200:
-            st.success("Account created")
-        else:
-            st.error("Signup failed")
+        st.success("Account created")
 
     if st.button("Forgot Password"):
         requests.post(
@@ -136,10 +133,8 @@ if st.session_state.user and st.session_state.role == "user":
     emps = get_employees()
 
     if eid not in emps["employee_id"].values:
-        c.execute(
-            "INSERT INTO employees VALUES (%s,%s,%s,%s,%s)",
-            (eid, "", "", datetime.date.today(), 0)
-        )
+        c.execute("INSERT INTO employees VALUES (%s,%s,%s,%s,%s)",
+                  (eid, "", "", datetime.date.today(), 0))
         conn.commit()
         st.rerun()
 
@@ -172,19 +167,16 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.title("Admin Panel")
 
-    # ===== CONTROL BUTTONS =====
     col1, col2, col3 = st.columns(3)
 
     if col1.button("Clear Submissions"):
         c.execute("DELETE FROM submissions")
         conn.commit()
-        st.success("Submissions cleared")
         st.rerun()
 
     if col2.button("Clear Results"):
         c.execute("DELETE FROM results")
         conn.commit()
-        st.success("Results cleared")
         st.rerun()
 
     if col3.button("Generate Test Submissions"):
@@ -199,17 +191,10 @@ if st.session_state.user and st.session_state.role == "admin":
                 (emp["employee_id"], *choices)
             )
         conn.commit()
-        st.success("Test data generated")
         st.rerun()
 
     st.markdown("---")
 
-    # EMPLOYEES
-    st.subheader("Employees")
-    emps = get_employees()
-    st.dataframe(emps)
-
-    # ADD EMPLOYEE
     st.subheader("Add Employee")
     new_id = st.text_input("Email")
     new_fn = st.text_input("First Name")
@@ -224,24 +209,35 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.markdown("---")
 
-    # SUBMISSIONS VIEW
     st.subheader("Submissions")
 
     subs = pd.read_sql_query("SELECT * FROM submissions", conn)
+
     if not subs.empty:
-        merged = subs.merge(emps, on="employee_id", how="left")
+        merged = subs.merge(get_employees(), on="employee_id", how="left")
         merged["choices"] = merged.apply(
             lambda r: ", ".join([str(r[f"choice{i}"]) for i in range(1, 11) if r[f"choice{i}"]]),
             axis=1
         )
         st.dataframe(merged[["employee_id","first_name","last_name","choices"]])
+
+        st.subheader("Delete Individual Submission")
+
+        delete_user = st.selectbox("Select user", merged["employee_id"].tolist())
+
+        if st.button("Delete Selected Submission"):
+            c.execute("DELETE FROM submissions WHERE employee_id=%s", (delete_user,))
+            conn.commit()
+            st.success("Deleted")
+            st.rerun()
+
     else:
-        st.info("No submissions yet")
+        st.info("No submissions")
 
     st.markdown("---")
 
-    # PASSWORD RESET
-    st.subheader("Reset User Password")
+    st.subheader("Reset Password")
+
     reset_email = st.text_input("User Email")
 
     if st.button("Send Reset Email"):
@@ -254,7 +250,6 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.markdown("---")
 
-    # LOTTERY
     if st.button("Run Lottery"):
         c.execute("DELETE FROM results")
 
