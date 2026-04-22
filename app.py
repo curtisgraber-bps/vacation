@@ -225,7 +225,6 @@ if st.session_state.user and st.session_state.role == "admin":
     # WEEKS
     st.subheader("Weeks")
     weeks_df = pd.read_sql_query("SELECT * FROM weeks ORDER BY week", conn)
-    st.dataframe(weeks_df)
 
     for i, row in weeks_df.iterrows():
         colA, colB = st.columns([4,1])
