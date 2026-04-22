@@ -3,14 +3,15 @@ import pandas as pd
 import psycopg2
 import datetime
 import random
-import requests
+import bcrypt
+import uuid
 
+# ---------- CONFIG ----------
 ADMIN_PASSWORD = "admin123"
+DB_URL = st.secrets["DB_URL"]
 
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-
-conn = psycopg2.connect(st.secrets["DB_URL"])
+# ---------- DB ----------
+conn = psycopg2.connect(DB_URL)
 conn.autocommit = True
 c = conn.cursor()
 
@@ -20,7 +21,10 @@ c.execute("""CREATE TABLE IF NOT EXISTS employees (
     first_name TEXT,
     last_name TEXT,
     hire_date DATE,
-    win_count INTEGER DEFAULT 0
+    win_count INTEGER DEFAULT 0,
+    password_hash TEXT,
+    reset_token TEXT,
+    reset_expiry TIMESTAMP
 )""")
 
 c.execute("""CREATE TABLE IF NOT EXISTS submissions (
@@ -43,6 +47,12 @@ c.execute("""CREATE TABLE IF NOT EXISTS weeks (
 def get_employees():
     return pd.read_sql_query("SELECT * FROM employees", conn)
 
+def hash_pw(pw):
+    return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
+
+def check_pw(pw, hashed):
+    return bcrypt.checkpw(pw.encode(), hashed.encode())
+
 def generate_weeks():
     start = datetime.date(2027, 1, 1)
     while start.weekday() != 5:
@@ -56,6 +66,39 @@ def get_active_weeks():
 if pd.read_sql_query("SELECT COUNT(*) c FROM weeks", conn)["c"][0] == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (%s,%s)", (w, True))
+
+# ---------- RESET HANDLER ----------
+params = st.query_params
+if "token" in params:
+    token = params["token"]
+
+    user = pd.read_sql_query(
+        "SELECT * FROM employees WHERE reset_token=%s",
+        conn,
+        params=(token,)
+    )
+
+    if user.empty:
+        st.error("Invalid token")
+        st.stop()
+
+    if user.iloc[0]["reset_expiry"] and user.iloc[0]["reset_expiry"] < datetime.datetime.utcnow():
+        st.error("Token expired")
+        st.stop()
+
+    st.title("Reset Password")
+    new_pw = st.text_input("New Password", type="password")
+
+    if st.button("Set Password"):
+        hashed = hash_pw(new_pw)
+        c.execute(
+            "UPDATE employees SET password_hash=%s, reset_token=NULL, reset_expiry=NULL WHERE employee_id=%s",
+            (hashed, user.iloc[0]["employee_id"])
+        )
+        conn.commit()
+        st.success("Password updated")
+
+    st.stop()
 
 # ---------- SESSION ----------
 if "user" not in st.session_state:
@@ -73,37 +116,40 @@ if not st.session_state.user:
     col1, col2 = st.columns(2)
 
     if col1.button("Login"):
-        res = requests.post(
-            f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
-            headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
-            json={"email": email, "password": password}
+        user = pd.read_sql_query(
+            "SELECT * FROM employees WHERE employee_id=%s",
+            conn,
+            params=(email,)
         )
-        if res.status_code == 200:
-            st.session_state.user = res.json()
+
+        if not user.empty and user.iloc[0]["password_hash"] and check_pw(password, user.iloc[0]["password_hash"]):
+            st.session_state.user = {"email": email}
             st.session_state.role = "user"
             st.rerun()
         else:
             st.error("Invalid login")
 
-    if col2.button("Sign Up"):
-        requests.post(
-            f"{SUPABASE_URL}/auth/v1/signup",
-            headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
-            json={"email": email, "password": password}
+    if col2.button("Create Account"):
+        hashed = hash_pw(password)
+        c.execute(
+            "INSERT INTO employees (employee_id, password_hash, hire_date, win_count) VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+            (email, hashed, datetime.date.today(), 0)
         )
+        conn.commit()
         st.success("Account created")
 
     if st.button("Forgot Password"):
-        requests.post(
-            f"{SUPABASE_URL}/auth/v1/recover",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={"email": email}
+        token = str(uuid.uuid4())
+        expiry = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+
+        c.execute(
+            "UPDATE employees SET reset_token=%s, reset_expiry=%s WHERE employee_id=%s",
+            (token, expiry, email)
         )
-        st.success("Reset email sent. Check your inbox.")
+        conn.commit()
+
+        st.write("Reset link (copy this):")
+        st.code(f"https://bpa-wellness.streamlit.app/?token={token}")
 
     if st.checkbox("Admin login"):
         pw = st.text_input("Admin Password", type="password")
@@ -123,18 +169,19 @@ if st.session_state.user:
 if st.session_state.user and st.session_state.role == "user":
     st.title("Vacation Scheduler")
 
-    email = st.session_state.user["user"]["email"]
+    email = st.session_state.user["email"]
 
     emps = get_employees()
 
     if email not in emps["employee_id"].values:
-        c.execute("INSERT INTO employees VALUES (%s,%s,%s,%s,%s)",
-                  (email, "", "", datetime.date.today(), 0))
+        c.execute(
+            "INSERT INTO employees (employee_id, hire_date, win_count) VALUES (%s,%s,%s)",
+            (email, datetime.date.today(), 0)
+        )
         conn.commit()
         st.rerun()
 
     weeks = get_active_weeks()
-
     choices = [st.selectbox(f"Choice {i}", [""] + weeks, key=f"c{i}") for i in range(1, 11)]
 
     if st.button("Submit"):
@@ -148,7 +195,6 @@ if st.session_state.user and st.session_state.role == "user":
 
 # ---------- ADMIN ----------
 if st.session_state.user and st.session_state.role == "admin":
-
     st.title("Admin Panel")
 
     if st.button("Clear Submissions"):
@@ -177,8 +223,4 @@ if st.session_state.user and st.session_state.role == "admin":
     res = pd.read_sql_query("SELECT * FROM results", conn)
     st.dataframe(res)
 
-    st.download_button(
-        "Download Results",
-        res.to_csv(index=False),
-        "results.csv"
-    )
+    st.download_button("Download Results", res.to_csv(index=False), "results.csv")
