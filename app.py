@@ -3,16 +3,13 @@ import pandas as pd
 import psycopg2
 import datetime
 import random
-from supabase import create_client
+import requests
 
 ADMIN_PASSWORD = "admin123"
 
-# SUPABASE
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# DB
 conn = psycopg2.connect(st.secrets["DB_URL"])
 conn.autocommit = True
 c = conn.cursor()
@@ -63,7 +60,7 @@ def get_active_weeks():
         ORDER BY TO_DATE(split_part(week, ' to ', 1), 'YYYY-MM-DD')
     """, conn)["week"].tolist()
 
-# INIT
+# INIT WEEKS
 if pd.read_sql_query("SELECT COUNT(*) c FROM weeks", conn)["c"][0] == 0:
     for w in generate_weeks():
         c.execute("INSERT INTO weeks VALUES (%s,%s)", (w, True))
@@ -84,27 +81,35 @@ if not st.session_state.user:
     col1, col2 = st.columns(2)
 
     if col1.button("Login"):
-        res = supabase.auth.sign_in_with_password({
-            "email": email,
-            "password": password
-        })
-        if res.user:
-            st.session_state.user = res.user
+        res = requests.post(
+            f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
+            headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
+            json={"email": email, "password": password}
+        )
+        if res.status_code == 200:
+            st.session_state.user = res.json()
             st.session_state.role = "user"
             st.rerun()
         else:
             st.error("Invalid login")
 
     if col2.button("Sign Up"):
-        res = supabase.auth.sign_up({
-            "email": email,
-            "password": password
-        })
-        if res.user:
+        res = requests.post(
+            f"{SUPABASE_URL}/auth/v1/signup",
+            headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
+            json={"email": email, "password": password}
+        )
+        if res.status_code == 200:
             st.success("Account created")
+        else:
+            st.error("Signup failed")
 
     if st.button("Forgot Password"):
-        supabase.auth.reset_password_for_email(email)
+        requests.post(
+            f"{SUPABASE_URL}/auth/v1/recover",
+            headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
+            json={"email": email}
+        )
         st.success("Password reset email sent")
 
     if st.checkbox("Admin login"):
@@ -125,13 +130,13 @@ if st.session_state.user:
 if st.session_state.user and st.session_state.role == "user":
     st.title("Vacation Scheduler")
 
-    email = st.session_state.user.email
+    email = st.session_state.user["user"]["email"]
     eid = email
-    emps = get_employees()
 
-if eid not in emps["employee_id"].values:
-    st.error("You are not set up in the system. Contact admin.")
-    st.stop()
+    emps = get_employees()
+    if eid not in emps["employee_id"].values:
+        st.error("Not authorized. Contact admin.")
+        st.stop()
 
     weeks = get_active_weeks()
 
@@ -162,14 +167,35 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.title("Admin Panel")
 
-    # EMPLOYEES
-    st.subheader("Employees")
-    emps = get_employees()
-    st.dataframe(emps)
+    col1, col2, col3 = st.columns(3)
 
-    # ADD EMPLOYEE
+    if col1.button("Clear Submissions"):
+        c.execute("DELETE FROM submissions")
+
+    if col2.button("Clear Results"):
+        c.execute("DELETE FROM results")
+
+    if col3.button("Generate Test Submissions"):
+        c.execute("DELETE FROM submissions")
+        emps = get_employees()
+        weeks = get_active_weeks()
+        for _, emp in emps.iterrows():
+            choices = random.sample(weeks, min(10, len(weeks)))
+            choices += [""] * (10 - len(choices))
+            c.execute(
+                "INSERT INTO submissions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (emp["employee_id"], *choices)
+            )
+
+    conn.commit()
+
+    st.markdown("---")
+
+    st.subheader("Employees")
+    st.dataframe(get_employees())
+
     st.subheader("Add Employee")
-    new_id = st.text_input("Email (Employee ID)")
+    new_id = st.text_input("Email")
     new_fn = st.text_input("First Name")
     new_ln = st.text_input("Last Name")
     new_hd = st.date_input("Hire Date")
@@ -182,10 +208,9 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.markdown("---")
 
-    # ADMIN CREATE SUBMISSION
     st.subheader("Create / Edit Submission")
 
-    users = emps["employee_id"].tolist()
+    users = get_employees()["employee_id"].tolist()
     selected = st.selectbox("Select User", users)
 
     weeks = get_active_weeks()
@@ -202,37 +227,20 @@ if st.session_state.user and st.session_state.role == "admin":
 
     st.markdown("---")
 
-    # WEEKS
-    st.subheader("Weeks")
+    st.subheader("Reset User Password (send email)")
 
-    col1, col2 = st.columns(2)
+    reset_email = st.text_input("User Email")
 
-    if col1.button("Select All Weeks"):
-        c.execute("UPDATE weeks SET enabled=TRUE")
-        conn.commit()
-        st.rerun()
-
-    if col2.button("Deselect All Weeks"):
-        c.execute("UPDATE weeks SET enabled=FALSE")
-        conn.commit()
-        st.rerun()
-
-    weeks_df = pd.read_sql_query("SELECT * FROM weeks", conn)
-
-    updates = []
-    for _, row in weeks_df.iterrows():
-        val = st.checkbox(row["week"], value=row["enabled"])
-        if val != row["enabled"]:
-            updates.append((val, row["week"]))
-
-    if updates:
-        for val, week in updates:
-            c.execute("UPDATE weeks SET enabled=%s WHERE week=%s", (val, week))
-        conn.commit()
+    if st.button("Send Reset Email"):
+        requests.post(
+            f"{SUPABASE_URL}/auth/v1/recover",
+            headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
+            json={"email": reset_email}
+        )
+        st.success("Reset email sent")
 
     st.markdown("---")
 
-    # LOTTERY
     if st.button("Run Lottery"):
         c.execute("DELETE FROM results")
 
