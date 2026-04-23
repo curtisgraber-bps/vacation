@@ -73,7 +73,7 @@ if "role" not in st.session_state:
 # ---------- LOGIN ----------
 if not st.session_state.user:
     st.title("Login")
-    st.write("You must be pre-approved. Contact admin.")
+    st.write("If you have any issues logging in contact K. Chytuk.")
 
     email_input = st.text_input("Email")
     password = st.text_input("Password", type="password")
