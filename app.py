@@ -259,6 +259,12 @@ if st.session_state.user and st.session_state.role == "admin":
     subs = pd.read_sql_query("SELECT * FROM submissions", conn)
     st.dataframe(subs)
 
+    st.download_button(
+    "Download Submissions",
+    subs.to_csv(index=False),
+    "submissions.csv"
+)
+
     if not subs.empty:
         delete_user = st.selectbox("Delete submission", subs["employee_id"])
         if st.button("Delete Selected"):
