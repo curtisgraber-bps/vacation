@@ -272,7 +272,7 @@ if st.session_state.user and st.session_state.role == "admin":
 
 st.dataframe(subs)
 
-    st.download_button(
+st.download_button(
     "Download Submissions",
     subs.to_csv(index=False),
     "submissions.csv"
