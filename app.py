@@ -81,6 +81,7 @@ if not st.session_state.user:
 
     col1, col2 = st.columns(2)
 
+    # LOGIN
     if col1.button("Login"):
         user = pd.read_sql_query(
             "SELECT * FROM employees WHERE LOWER(employee_id)=%s",
@@ -94,7 +95,8 @@ if not st.session_state.user:
         else:
             st.error("Invalid login")
 
-    if col2.button("Set Your Password"):
+    # USER SET PASSWORD (first time / reset)
+    if col2.button("Set / Reset Password"):
         if not email or not password:
             st.error("Enter email and password")
         else:
@@ -104,16 +106,16 @@ if not st.session_state.user:
                 params=(email,)
             )
             if existing.empty:
-                st.error("You are not authorized. Contact admin.")
+                st.error("You are not authorized.")
             else:
-                hashed = hash_pw(password)
                 c.execute(
                     "UPDATE employees SET password_hash=%s WHERE LOWER(employee_id)=%s",
-                    (hashed, email)
+                    (hash_pw(password), email)
                 )
                 conn.commit()
-                st.success("Password set. Now click Login.")
+                st.success("Password set. Now login.")
 
+    # ADMIN LOGIN
     if st.checkbox("Admin login"):
         pw = st.text_input("Admin Password", type="password")
         if st.button("Admin Login"):
@@ -186,23 +188,36 @@ if st.session_state.user and st.session_state.role == "admin":
         conn.commit()
         st.rerun()
 
+    # EMPLOYEES
     st.subheader("Employees")
     emps = get_employees()
     st.dataframe(emps)
 
+    # EDIT WIN COUNT
     st.subheader("Edit Win Count")
-    selected_user = st.selectbox("Select Employee", emps["employee_id"])
-    current_win = emps[emps["employee_id"] == selected_user]["win_count"].iloc[0]
-    new_win = st.number_input("Win Count", min_value=0, step=1, value=int(current_win))
+
+    emp_map = {
+        f"{r['first_name']} {r['last_name']} ({r['employee_id']})": r["employee_id"]
+        for _, r in emps.iterrows()
+    }
+
+    selected_label = st.selectbox("Select Employee", list(emp_map.keys()))
+    selected_user = emp_map[selected_label]
+
+    current_win = int(emps[emps["employee_id"] == selected_user]["win_count"].iloc[0])
+
+    new_win = st.number_input("Win Count", min_value=0, step=1, value=current_win)
 
     if st.button("Update Win Count"):
         c.execute("UPDATE employees SET win_count=%s WHERE employee_id=%s",
-                  (int(new_win), selected_user))
+                  (new_win, selected_user))
         conn.commit()
         st.success("Updated")
         st.rerun()
 
+    # ADD EMPLOYEE
     st.subheader("Add Employee")
+
     new_email = norm_email(st.text_input("Email"))
     first_name = st.text_input("First Name")
     last_name = st.text_input("Last Name")
@@ -220,10 +235,25 @@ if st.session_state.user and st.session_state.role == "admin":
         conn.commit()
         st.success("Employee added")
 
+    # ADMIN RESET PASSWORD
+    st.subheader("Reset User Password")
+
+    reset_email = norm_email(st.text_input("User Email for Reset"))
+    reset_pw = st.text_input("New Password", type="password")
+
+    if st.button("Reset Password (Admin)"):
+        c.execute("UPDATE employees SET password_hash=%s WHERE LOWER(employee_id)=%s",
+                  (hash_pw(reset_pw), reset_email))
+        conn.commit()
+        st.success("Password reset")
+
+    # WEEKS
     st.subheader("Weeks")
+
     weeks_df = pd.read_sql_query("SELECT * FROM weeks ORDER BY week", conn)
+
     for i, row in weeks_df.iterrows():
-        colA, colB = st.columns([4,1])
+        colA, colB = st.columns([4, 1])
         colA.write(row["week"])
         new_val = colB.checkbox("", value=row["enabled"], key=f"wk_{i}")
         if new_val != row["enabled"]:
@@ -232,6 +262,7 @@ if st.session_state.user and st.session_state.role == "admin":
             conn.commit()
             st.rerun()
 
+    # SUBMISSIONS
     st.subheader("Submissions")
 
     subs = pd.read_sql_query("""
@@ -259,10 +290,12 @@ if st.session_state.user and st.session_state.role == "admin":
             conn.commit()
             st.rerun()
 
+    # LOTTERY
     if st.button("Run Lottery"):
         c.execute("DELETE FROM results")
+
         subs = pd.read_sql_query("SELECT * FROM submissions", conn)
-        emps = get_employees().sort_values(by=["win_count","hire_date"])
+        emps = get_employees().sort_values(by=["win_count", "hire_date"])
 
         taken = set()
 
@@ -272,7 +305,7 @@ if st.session_state.user and st.session_state.role == "admin":
                 continue
             row = sub.iloc[0]
 
-            for i in range(1,11):
+            for i in range(1, 11):
                 choice = row[f"choice{i}"]
                 if choice and choice not in taken:
                     taken.add(choice)
@@ -285,7 +318,9 @@ if st.session_state.user and st.session_state.role == "admin":
         conn.commit()
         st.success("Lottery complete")
 
+    # RESULTS
     st.subheader("Results")
+
     res = pd.read_sql_query("SELECT * FROM results", conn)
     st.dataframe(res)
 
