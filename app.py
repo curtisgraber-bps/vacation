@@ -256,8 +256,21 @@ if st.session_state.user and st.session_state.role == "admin":
 
     # SUBMISSIONS
     st.subheader("Submissions")
-    subs = pd.read_sql_query("SELECT * FROM submissions", conn)
-    st.dataframe(subs)
+    subs = pd.read_sql_query("""
+    SELECT 
+        s.employee_id,
+        e.first_name,
+        e.last_name,
+        e.hire_date,
+        e.win_count,
+        s.choice1, s.choice2, s.choice3, s.choice4, s.choice5,
+        s.choice6, s.choice7, s.choice8, s.choice9, s.choice10
+    FROM submissions s
+    JOIN employees e ON LOWER(s.employee_id) = LOWER(e.employee_id)
+    ORDER BY e.hire_date
+""", conn)
+
+st.dataframe(subs)
 
     st.download_button(
     "Download Submissions",
